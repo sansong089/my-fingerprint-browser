@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+native/**/node_modules/
+
+# Build output
+dist/
+dist-electron/
+release/
+out/
+build/
+native/**/build/
+
+# Logs and runtime output
+output/
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Test output
+coverage/
+test-results/
+playwright-report/
+
+# TypeScript / Vite cache
+*.tsbuildinfo
+.vite/
+
+# Native build intermediates
+*.obj
+*.pdb
+*.ilk
+*.lib
+*.exp
+*.node
+*.vcxproj.user
+msbuild_output*.txt
+
+# Local app/runtime state
+.omx/
+.workbuddy/
+.codex
+*.local
+.env
+.env.*
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+.omx/
+AGENTS.md

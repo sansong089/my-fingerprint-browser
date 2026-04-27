@@ -1,0 +1,335 @@
+import { spawn, ChildProcess } from 'child_process'
+import { join, dirname } from 'path'
+import { existsSync } from 'fs'
+import { app } from 'electron'
+import { storageService, Environment, FingerprintConfig } from './StorageService'
+import { eventBus } from '../managers/BrowserEventBus'
+import { syncExtensionService } from './SyncExtensionService'
+
+export interface LaunchOptions {
+  userDataDir: string
+  cdpPort: number
+  fingerprint: FingerprintConfig
+  proxy?: string
+  url?: string
+  syncExtensionDir?: string
+}
+
+class LaunchService {
+  private processes: Map<string, ChildProcess> = new Map()
+  private lastLaunchCommands: Map<string, string> = new Map()
+  private browserPath: string = ''
+
+  constructor() {
+    this.detectBrowserPath()
+  }
+
+  // 检测浏览器路径
+  private detectBrowserPath() {
+    const settings = storageService.getSettings()
+    
+    // 如果用户指定了路径
+    if (settings.browserPath && existsSync(settings.browserPath)) {
+      this.browserPath = settings.browserPath
+      return
+    }
+
+    // 自动检测常见浏览器路径
+    const possiblePaths = this.getPossibleBrowserPaths()
+    
+    for (const p of possiblePaths) {
+      if (existsSync(p)) {
+        this.browserPath = p
+        console.log('Found browser:', p)
+        return
+      }
+    }
+
+    // 尝试使用系统默认浏览器
+    if (process.platform === 'win32') {
+      const winChromePaths = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      ]
+      for (const p of winChromePaths) {
+        if (existsSync(p)) {
+          this.browserPath = p
+          console.log('Using system Chrome/Edge:', p)
+          return
+        }
+      }
+    }
+    
+    // 尝试 macOS
+    if (process.platform === 'darwin') {
+      const macPaths = [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+      ]
+      for (const p of macPaths) {
+        if (existsSync(p)) {
+          this.browserPath = p
+          return
+        }
+      }
+    }
+  }
+
+  private getPossibleBrowserPaths(): string[] {
+    const appData = app.getPath('appData')
+    const appPath = app.getAppPath()
+    
+    if (process.platform === 'win32') {
+      return [
+        join(appData, 'Local', 'fingerprint-chromium', 'chrome.exe'),
+        join(appData, 'Local', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        join(appData, 'Programs', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        join(dirname(appPath), 'chromium', 'chrome.exe'),
+      ]
+    } else if (process.platform === 'darwin') {
+      return [
+        '/Applications/Fingerprint Chromium.app/Contents/MacOS/Fingerprint Chromium',
+        join(appData, 'fingerprint-chromium', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
+      ]
+    } else {
+      return [
+        join(appData, 'fingerprint-chromium', 'chrome'),
+        '/usr/bin/fingerprint-chromium',
+      ]
+    }
+  }
+
+  // 构建启动参数
+  buildArgs(options: LaunchOptions): string[] {
+    const args: string[] = []
+    const fp = options.fingerprint
+
+    // 基础参数
+    args.push(`--user-data-dir=${options.userDataDir}`)
+    args.push(`--remote-debugging-port=${options.cdpPort}`)
+    // 安全：CDP 仅监听本地（P1 风险修复）
+    args.push('--remote-debugging-address=127.0.0.1')
+    args.push(`--no-first-run`)
+    args.push(`--no-default-browser-check`)
+    
+    // 指纹参数
+    if (fp.seed) {
+      args.push(`--fingerprint=${fp.seed}`)
+    }
+    if (fp.platform) {
+      args.push(`--fingerprint-platform=${fp.platform}`)
+    }
+    if (fp.platformVersion) {
+      args.push(`--fingerprint-platform-version=${fp.platformVersion}`)
+    }
+    if (fp.brand) {
+      args.push(`--fingerprint-brand=${fp.brand}`)
+    }
+    if (fp.brandVersion) {
+      args.push(`--fingerprint-brand-version=${fp.brandVersion}`)
+    }
+    if (fp.hardwareConcurrency) {
+      args.push(`--fingerprint-hardware-concurrency=${fp.hardwareConcurrency}`)
+    }
+    if (fp.timezone) {
+      args.push(`--timezone=${fp.timezone}`)
+    }
+    if (fp.lang) {
+      args.push(`--lang=${fp.lang}`)
+      args.push(`--accept-lang=${fp.lang}`)
+    }
+    if (fp.disabledSpoofing?.length) {
+      args.push(`--disable-spoofing=${fp.disabledSpoofing.join(',')}`)
+    }
+    
+    // 代理
+    if (options.proxy) {
+      args.push(`--proxy-server=${options.proxy}`)
+      args.push(`--disable-non-proxied-udp`)
+    }
+
+    // 代理认证（P1#8：支持 --proxy-auth 参数）
+    if ((options as any).proxyAuth) {
+      args.push(`--proxy-auth=${(options as any).proxyAuth}`)
+    }
+    
+    // WebRTC
+    args.push(`--disable-webrtc-foreground-indicator`)
+    
+    // 自动化检测
+    args.push(`--disable-detection-forms`)
+    args.push(`--avoid-edge-touches-activation`)
+
+    if (options.syncExtensionDir) {
+      args.push(`--load-extension=${options.syncExtensionDir}`)
+    }
+    
+    // 默认URL
+    if (options.url) {
+      args.push(options.url)
+    } else {
+      args.push('--about')
+    }
+
+    return args
+  }
+
+  private quoteCommandPart(part: string): string {
+    if (!part) return '""'
+    if (!/[\s"]/.test(part)) return part
+    return `"${part.replace(/"/g, '\\"')}"`
+  }
+
+  private formatCommand(command: string, args: string[]): string {
+    return [command, ...args].map(part => this.quoteCommandPart(part)).join(' ')
+  }
+
+  // 等待 CDP 就绪（轮询检测，替代原来的 setTimeout 1000ms 硬等）
+  async waitForCDPReady(port: number, timeoutMs = 5000): Promise<boolean> {
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/json/version`)
+        if (res.ok) {
+          console.log(`[LaunchService] CDP ready on port ${port}`)
+          return true
+        }
+      } catch { /* not ready yet */ }
+      await new Promise(resolve => setTimeout(resolve, 200))
+    }
+    console.error(`[LaunchService] CDP not ready on port ${port} after ${timeoutMs}ms`)
+    return false
+  }
+
+  // 启动浏览器
+  async launch(envId: string, options: LaunchOptions): Promise<boolean> {
+    // 如果已经有进程在运行，先关闭
+    if (this.processes.has(envId)) {
+      this.close(envId)
+    }
+
+    let syncExtensionDir = ''
+    try {
+      syncExtensionDir = await syncExtensionService.prepareExtension(envId)
+    } catch (error) {
+      console.error('[LaunchService] Failed to prepare sync extension. Browser launch aborted:', error)
+      return false
+    }
+
+    const args = this.buildArgs({ ...options, syncExtensionDir })
+    const spawnArgs = [...args]
+    let browserPath = this.browserPath
+
+    // 检查浏览器是否存在
+    if (!browserPath) {
+      console.error('ERROR: Browser path not found. Configure a browser path in Settings.')
+      return false
+    }
+
+    if (!existsSync(browserPath)) {
+      console.error('ERROR: Browser not found at:', browserPath)
+      console.log('Please configure correct browser path in Settings.')
+      return false
+    }
+
+    const launchCommand = this.formatCommand(browserPath, spawnArgs)
+    this.lastLaunchCommands.set(envId, launchCommand)
+
+    console.log('=== Browser Launch ===')
+    console.log('Command:', launchCommand)
+    console.log('====================')
+
+    const proc = spawn(browserPath, spawnArgs, {
+      detached: true,
+      stdio: 'ignore'
+    })
+
+    proc.unref()
+    
+    proc.on('error', (err) => {
+      console.error('Browser launch error:', err)
+    })
+
+    proc.on('exit', (code) => {
+      console.log('Browser exited with code:', code)
+      this.processes.delete(envId)
+      this.lastLaunchCommands.delete(envId)
+      // P1#6 修复：通知渲染进程浏览器已退出
+      eventBus.emit('browser-event', {
+        type: 'closed',
+        envId,
+        code: code ?? undefined,
+      })
+    })
+
+    // P1#6：异常崩溃时也通知
+    proc.on('disconnect', () => {
+      if (this.processes.has(envId)) {
+        eventBus.emit('browser-event', { type: 'crashed', envId })
+        this.processes.delete(envId)
+      }
+      this.lastLaunchCommands.delete(envId)
+    })
+
+    // 使用 CDP 端口轮询替代 setTimeout 1000ms 硬等（P0#3 修复）
+    const cdpReady = await this.waitForCDPReady(options.cdpPort)
+    if (cdpReady) {
+      this.processes.set(envId, proc)
+    }
+
+    return cdpReady
+  }
+
+  // 关闭浏览器
+  close(envId: string): boolean {
+    const proc = this.processes.get(envId)
+    if (proc) {
+      try {
+        if (process.platform === 'win32') {
+          spawn('taskkill', ['/pid', proc.pid!.toString(), '/f', '/t'])
+        } else {
+          proc.kill()
+        }
+        this.processes.delete(envId)
+        this.lastLaunchCommands.delete(envId)
+        return true
+      } catch (e) {
+        console.error('Close browser error:', e)
+      }
+    }
+    return false
+  }
+
+  // 关闭所有浏览器
+  closeAll(): void {
+    for (const envId of this.processes.keys()) {
+      this.close(envId)
+    }
+  }
+
+  // 检查浏览器是否在运行
+  isRunning(envId: string): boolean {
+    const proc = this.processes.get(envId)
+    return !!proc && !proc.killed
+  }
+
+  // 获取CDP地址
+  getCDPAddress(env: Environment): string {
+    return `ws://127.0.0.1:${env.cdpPort}`
+  }
+
+  /** 获取进程 PID */
+  getPid(envId: string): number | undefined {
+    const proc = this.processes.get(envId)
+    return proc?.pid
+  }
+
+  /** 获取最近一次启动命令 */
+  getLaunchCommand(envId: string): string | undefined {
+    return this.lastLaunchCommands.get(envId)
+  }
+}
+
+export const launchService = new LaunchService()
+export default LaunchService
