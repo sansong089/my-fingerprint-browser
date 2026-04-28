@@ -117,6 +117,18 @@ const schemas: Record<string, ChannelSchema> = {
     envId: { type: 'string' },
     limit: { type: 'number' },
   },
+  'plugins-install': {
+    storeUrl: { type: 'string', required: true, min: 10 },
+    name: { type: 'string' },
+    iconUrl: { type: 'string' },
+    description: { type: 'string' },
+  },
+  'plugins-uninstall': {
+    pluginId: { type: 'string', required: true, min: 1 },
+  },
+  'plugins-reinstall-missing': {
+    pluginId: { type: 'string', required: true, min: 1 },
+  },
 }
 
 function validate(channel: string, params: unknown):

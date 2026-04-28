@@ -87,3 +87,15 @@ export interface WindowsArrangeParams {
   envIds?: string[]
   envMonitorMap?: Record<string, string>
 }
+
+// --- Plugin IPC ---
+export interface PluginInstallParams {
+  storeUrl: string
+  name?: string
+  iconUrl?: string
+  description?: string
+}
+
+export interface PluginActionParams {
+  pluginId: string
+}

@@ -18,6 +18,13 @@ export type { ProfileTemplate } from './template'
 export type { Script, ScriptStep } from './script'
 export type { ActivityLog } from './log'
 export type { CookieData } from './cookie'
+export type {
+  PluginRecord,
+  EnvironmentPluginTarget,
+  PluginBackendProofRecord,
+  PluginListItem,
+  PluginInstallPayload,
+} from './plugin'
 
 // Infrastructure types
 export type { WindowPosition, MonitorInfo, WindowInfo } from './window'
@@ -38,4 +45,6 @@ export type {
   SyncStartParams,
   ActivityLogQueryParams,
   WindowsArrangeParams,
+  PluginInstallParams,
+  PluginActionParams,
 } from './ipc'

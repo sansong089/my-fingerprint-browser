@@ -18,20 +18,18 @@
         v-for="item in navItems"
         :key="item.path"
         :to="item.path"
-        class="flex items-center gap-3 h-10 px-3 rounded-lg transition-colors group"
-        active-class="bg-blue-500/10 text-white"
-        exact-active-class="bg-blue-500/10 text-white"
-        :class="
-          collapsed ? 'justify-center' : ''
-            + ' text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
-        "
+        class="flex items-center gap-3 h-10 px-3 rounded-lg transition-colors group relative text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"
+        :class="[
+          collapsed ? 'justify-center' : '',
+          isItemActive(item) ? 'bg-blue-500/10 !text-white' : '',
+        ]"
         :title="collapsed ? item.label : undefined"
       >
         <component :is="item.icon" class="w-[20px] h-[20px] shrink-0" />
         <span v-if="!collapsed" class="text-[13px] font-medium">{{ item.label }}</span>
         <!-- 活跃指示：左边条 -->
         <span
-          v-if="$route.path === item.path && !collapsed"
+          v-if="isItemActive(item) && !collapsed"
           class="absolute left-0 w-[3px] h-6 bg-blue-500 rounded-r"
         ></span>
       </router-link>
@@ -61,25 +59,45 @@
 
 <script setup lang="ts">
 import { useStore } from 'vuex'
+import { useRoute } from 'vue-router'
 import {
   LayoutDashboard,
   Monitor,
   Globe,
+  Puzzle,
   Code,
   Settings as SettingsIcon,
 } from 'lucide-vue-next'
 
 const store = useStore()
+const route = useRoute()
 
-const navItems = [
+interface NavItem {
+  path: string
+  label: string
+  icon: any
+  /** 额外激活前缀，匹配该前缀的路径也会高亮此项 */
+  activePrefix?: string
+}
+
+const navItems: NavItem[] = [
   { path: '/', label: '概览', icon: LayoutDashboard },
   { path: '/environments', label: '环境', icon: Monitor },
   { path: '/proxies', label: '代理', icon: Globe },
+  { path: '/plugins', label: '插件', icon: Puzzle, activePrefix: '/plugins' },
   { path: '/scripts', label: '脚本', icon: Code },
   { path: '/settings', label: '设置', icon: SettingsIcon },
 ]
+
+function isItemActive(item: NavItem): boolean {
+  if (item.activePrefix) {
+    return route.path === item.path || route.path.startsWith(item.activePrefix + '/')
+  }
+  return route.path === item.path
+}
 
 defineProps<{
   collapsed: boolean
 }>()
 </script>
+

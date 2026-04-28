@@ -8,12 +8,10 @@
       <!-- 全局侧边栏 (200px / 60px) -->
       <Sidebar :collapsed="sidebarCollapsed" />
 
-      <!-- 内容区 -->
-      <main class="flex-1 min-w-0 overflow-hidden">
+      <!-- 内容区：relative 为子视图 absolute 定位提供参考 -->
+      <main class="flex-1 min-h-0 min-w-0 overflow-hidden relative">
         <router-view v-slot="{ Component }">
-          <transition name="page" mode="out-in">
-            <component :is="Component" class="h-full" />
-          </transition>
+          <component :is="Component" class="absolute inset-0" />
         </router-view>
       </main>
     </div>
@@ -61,8 +59,14 @@ onUnmounted(() => {
 
 <style>
 /* 页面切换动画 */
-.page-enter-active { transition: opacity 0.2s ease-out, transform 0.2s ease-out; }
-.page-leave-active { transition: opacity 0.15s ease-in, transform 0.15s ease-in; }
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+  /* 保证过渡期间子视图高度不塌陷 */
+  height: 100%;
+  display: block;
+}
+.page-leave-active { transition-duration: 0.15s; transition-timing-function: ease-in; }
 .page-enter-from { opacity: 0; transform: translateY(4px); }
 .page-leave-to { opacity: 0; }
 

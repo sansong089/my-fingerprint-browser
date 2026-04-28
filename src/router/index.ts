@@ -4,6 +4,8 @@ import { createRouter, createWebHashHistory, RouteRecordRaw } from 'vue-router'
 const OverviewView = () => import('@/views/OverviewView.vue')
 const EnvironmentsView = () => import('@/views/EnvironmentsView.vue')
 const ProxiesView = () => import('@/views/ProxiesView.vue')
+const PluginsView = () => import('@/views/PluginsView.vue')
+const PluginStoreView = () => import('@/views/PluginStoreView.vue')
 const ScriptsView = () => import('@/views/ScriptsView.vue')
 const SettingsView = () => import('@/views/SettingsView.vue')
 
@@ -11,6 +13,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/', name: 'Overview', component: OverviewView },
   { path: '/environments', name: 'Environments', component: EnvironmentsView },
   { path: '/proxies', name: 'Proxies', component: ProxiesView },
+  { path: '/plugins', name: 'Plugins', component: PluginsView },
+  { path: '/plugins/store', name: 'PluginStore', component: PluginStoreView },
   { path: '/scripts', name: 'Scripts', component: ScriptsView },
   { path: '/settings', name: 'Settings', component: SettingsView },
 ]

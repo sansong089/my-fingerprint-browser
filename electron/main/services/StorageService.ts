@@ -53,6 +53,42 @@ export interface Settings {
   syncDelay: number
 }
 
+export interface PluginRecord {
+  id: string
+  name: string
+  storeUrl: string
+  source: 'chrome-web-store'
+  version: string
+  iconUrl?: string
+  description?: string
+  artifactRelativePath: string
+  inheritToNewEnvironments: boolean
+  installedByAppAt: string
+  updatedAt: string
+  backend: 'launch-arg'
+}
+
+export interface EnvironmentPluginTarget {
+  envId: string
+  pluginId: string
+  desiredState: 'installed' | 'removed'
+  applyBackend?: 'launch-arg' | 'profile-external' | 'proven-other'
+  lastAppliedVersion?: string
+  lastMaterializedAt?: string
+  lastError?: string
+}
+
+export interface PluginBackendProofRecord {
+  backend: 'launch-arg'
+  decision: 'approved'
+  checkedAt: string
+  rationale: string
+  evidence: string[]
+  constraints: string[]
+  detectionMethod: string
+  adrRelativePath: string
+}
+
 interface StoreSchema {
   environments: Environment[]
   settings: Settings
@@ -61,6 +97,9 @@ interface StoreSchema {
   proxies: Proxy[]
   templates: ProfileTemplate[]
   scripts: Script[]
+  plugins: PluginRecord[]
+  pluginTargets: EnvironmentPluginTarget[]
+  pluginBackendProof: PluginBackendProofRecord | null
 }
 
 const defaultSettings: Settings = {
@@ -95,6 +134,9 @@ class StorageService {
         proxies: [],
         templates: [],
         scripts: [],
+        plugins: [],
+        pluginTargets: [],
+        pluginBackendProof: null,
       }
     })
     console.log('Storage file path:', this.store.path)
@@ -127,6 +169,70 @@ class StorageService {
 
   deleteEnvironment(id: string): void {
     this.saveEnvironments(this.getEnvironments().filter(e => e.id !== id))
+  }
+
+  // ==================== Plugins ====================
+
+  getPlugins(): PluginRecord[] {
+    return this.store.get('plugins', [])
+  }
+
+  savePlugins(plugins: PluginRecord[]): void {
+    this.store.set('plugins', plugins)
+  }
+
+  addPlugin(plugin: PluginRecord): void {
+    const plugins = this.getPlugins()
+    plugins.push(plugin)
+    this.savePlugins(plugins)
+  }
+
+  updatePlugin(id: string, data: Partial<PluginRecord>): void {
+    const plugins = this.getPlugins()
+    const index = plugins.findIndex(plugin => plugin.id === id)
+    if (index !== -1) {
+      plugins[index] = { ...plugins[index], ...data }
+      this.savePlugins(plugins)
+    }
+  }
+
+  deletePlugin(id: string): void {
+    this.savePlugins(this.getPlugins().filter(plugin => plugin.id !== id))
+  }
+
+  getPluginTargets(): EnvironmentPluginTarget[] {
+    return this.store.get('pluginTargets', [])
+  }
+
+  savePluginTargets(targets: EnvironmentPluginTarget[]): void {
+    this.store.set('pluginTargets', targets)
+  }
+
+  upsertPluginTarget(target: EnvironmentPluginTarget): void {
+    const targets = this.getPluginTargets()
+    const index = targets.findIndex(item => item.envId === target.envId && item.pluginId === target.pluginId)
+    if (index !== -1) {
+      targets[index] = { ...targets[index], ...target }
+    } else {
+      targets.push(target)
+    }
+    this.savePluginTargets(targets)
+  }
+
+  deletePluginTargetsForPlugin(pluginId: string): void {
+    this.savePluginTargets(this.getPluginTargets().filter(target => target.pluginId !== pluginId))
+  }
+
+  deletePluginTargetsForEnvironment(envId: string): void {
+    this.savePluginTargets(this.getPluginTargets().filter(target => target.envId !== envId))
+  }
+
+  getPluginBackendProof(): PluginBackendProofRecord | null {
+    return this.store.get('pluginBackendProof', null)
+  }
+
+  savePluginBackendProof(proof: PluginBackendProofRecord | null): void {
+    this.store.set('pluginBackendProof', proof)
   }
 
   // ==================== Settings ====================

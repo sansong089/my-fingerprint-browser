@@ -13,6 +13,7 @@ export interface LaunchOptions {
   proxy?: string
   url?: string
   syncExtensionDir?: string
+  managedExtensionDirs?: string[]
 }
 
 class LaunchService {
@@ -161,8 +162,12 @@ class LaunchService {
     args.push(`--disable-detection-forms`)
     args.push(`--avoid-edge-touches-activation`)
 
-    if (options.syncExtensionDir) {
-      args.push(`--load-extension=${options.syncExtensionDir}`)
+    const extensionDirs = [
+      ...(options.syncExtensionDir ? [options.syncExtensionDir] : []),
+      ...((options.managedExtensionDirs || []).filter(Boolean)),
+    ]
+    if (extensionDirs.length) {
+      args.push(`--load-extension=${extensionDirs.join(',')}`)
     }
     
     // 默认URL

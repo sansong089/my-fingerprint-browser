@@ -14,6 +14,9 @@ import { cookieManager } from './managers/CookieManager'
 import { scriptManager } from './managers/ScriptManager'
 import { windowManager } from './managers/WindowManager'
 import { syncExtensionService } from './services/SyncExtensionService'
+import { pluginCatalogService } from './services/PluginCatalogService'
+import { pluginInstallService } from './services/PluginInstallService'
+import { pluginStoreWindowService } from './services/PluginStoreWindowService'
 
 // Global references
 let mainWindow: BrowserWindow | null = null
@@ -316,7 +319,8 @@ function createWindow() {
       preload,
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false
+      sandbox: false,
+      webviewTag: true
     }
   })
 
@@ -576,6 +580,49 @@ ipcMain.handle('save-settings', (_, settings) => {
   const validation = validateIPC('save-settings', settings)
   if (!validation.success) throw new Error(validation.error)
   storageService.saveSettings(settings)
+  return true
+})
+
+// --- Plugin management ---
+ipcMain.handle('plugins-list', () => {
+  return pluginCatalogService.buildPluginListItems({
+    suppressedByEnv: pluginInstallService.getSuppressedByEnvironment(),
+  })
+})
+
+ipcMain.handle('plugins-backend-proof', () => {
+  return pluginInstallService.ensureBackendProof()
+})
+
+ipcMain.handle('plugins-open-store', () => {
+  return pluginStoreWindowService.openStore()
+})
+
+ipcMain.handle('plugins-current-store-detail', () => {
+  return pluginStoreWindowService.getCurrentDetail()
+})
+
+ipcMain.handle('plugins-install-current-store', () => {
+  return pluginStoreWindowService.installCurrentDetail()
+})
+
+ipcMain.handle('plugins-install', (_, payload) => {
+  const validation = validateIPC('plugins-install', payload)
+  if (!validation.success) throw new Error(validation.error)
+  return pluginInstallService.installFromStore(validation.data)
+})
+
+ipcMain.handle('plugins-uninstall', (_, payload) => {
+  const validation = validateIPC('plugins-uninstall', payload)
+  if (!validation.success) throw new Error(validation.error)
+  pluginInstallService.uninstallFromApp(validation.data.pluginId)
+  return true
+})
+
+ipcMain.handle('plugins-reinstall-missing', (_, payload) => {
+  const validation = validateIPC('plugins-reinstall-missing', payload)
+  if (!validation.success) throw new Error(validation.error)
+  pluginInstallService.reinstallMissingOnly(validation.data.pluginId)
   return true
 })
 

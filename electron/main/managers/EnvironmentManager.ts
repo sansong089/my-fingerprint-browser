@@ -3,6 +3,8 @@ import { storageService, Environment, FingerprintConfig, ProxyConfig } from '../
 import { launchService } from '../services/LaunchService'
 import { activityLogService } from './ActivityLogService'
 import { eventBus } from './BrowserEventBus'
+import { pluginCatalogService } from '../services/PluginCatalogService'
+import { pluginInstallService } from '../services/PluginInstallService'
 
 class EnvironmentManager {
   constructor() {
@@ -53,6 +55,7 @@ class EnvironmentManager {
     }
 
     storageService.addEnvironment(env)
+    pluginCatalogService.inheritPluginsForEnvironment(env.id)
 
     // 记录操作日志
     activityLogService.log({ envId: env.id, action: 'create', details: `创建环境: ${env.name}` })
@@ -75,7 +78,11 @@ class EnvironmentManager {
   // Delete environment
   deleteEnvironment(id: string): boolean {
     // 先关闭浏览器
+    const env = this.getEnvironment(id)
     this.closeBrowser(id)
+    if (env) {
+      pluginInstallService.cleanupEnvironment(id, env.userDataDir)
+    }
     storageService.deleteEnvironment(id)
     return true
   }
@@ -92,11 +99,14 @@ class EnvironmentManager {
         ? `${env.proxy.username}:${env.proxy.password}`
         : undefined
 
+    const pluginLaunchContext = pluginInstallService.getLaunchContextForEnvironment(env.id, env.userDataDir)
+
     const success = await launchService.launch(id, {
       userDataDir: env.userDataDir,
       cdpPort: env.cdpPort,
       fingerprint: env.fingerprint,
       proxy,
+      managedExtensionDirs: pluginLaunchContext.extensionDirs,
       ...(proxyAuth ? { proxyAuth } : {}),
     })
 
