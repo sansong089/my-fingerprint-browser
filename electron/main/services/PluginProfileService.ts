@@ -50,20 +50,9 @@ class PluginProfileService {
   }
 
   detectSuppressedFromPreferences(userDataDir: string, desiredPluginIds: string[]): string[] {
-    const state = this.getState(userDataDir)
-    const currentPrefsIds = this.getPreferenceExtensionIds(userDataDir)
-    const suppressed = new Set(state.suppressedPluginIds)
-    const previouslyLaunched = new Set(state.lastLaunchedPluginIds || [])
-
-    for (const pluginId of desiredPluginIds) {
-      if (previouslyLaunched.has(pluginId) && !currentPrefsIds.has(pluginId)) {
-        suppressed.add(pluginId)
-      }
-    }
-
-    state.suppressedPluginIds = [...suppressed]
-    this.saveState(userDataDir, state)
-    return state.suppressedPluginIds
+    void userDataDir
+    void desiredPluginIds
+    return []
   }
 
   markLaunchedPlugins(userDataDir: string, pluginIds: string[]): void {

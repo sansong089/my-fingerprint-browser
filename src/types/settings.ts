@@ -10,4 +10,6 @@ export interface Settings {
   autoStart: boolean
   minimizeToTray: boolean
   syncDelay: number
+  environmentPageSize: number
+  proxyPageSize: number
 }

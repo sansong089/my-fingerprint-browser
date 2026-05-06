@@ -54,41 +54,6 @@
           </button>
         </div>
 
-        <div class="action-group">
-          <button
-            @click="arrangeSelectedWindows"
-            :disabled="!canOperateWindows"
-            class="action-btn action-btn-arrange"
-            :title="canOperateWindows ? '排列选中的运行中窗口' : '请选择运行中的环境'"
-          >
-            窗口排列
-          </button>
-          <button
-            @click="maximizeSelectedWindows"
-            :disabled="!canOperateWindows"
-            class="action-btn action-btn-maximize"
-            :title="canOperateWindows ? '最大化选中的运行中窗口' : '请选择运行中的环境'"
-          >
-            最大化
-          </button>
-          <button
-            @click="minimizeSelectedWindows"
-            :disabled="!canOperateWindows"
-            class="action-btn action-btn-minimize"
-            :title="canOperateWindows ? '最小化选中的运行中窗口' : '请选择运行中的环境'"
-          >
-            最小化
-          </button>
-          <button
-            @click="startSyncMode"
-            :disabled="!canStartSync"
-            class="action-btn action-btn-sync"
-            :title="canStartSync ? '排列窗口并开始同步' : '至少选择 2 个运行中的环境才能同步'"
-          >
-            窗口同步
-          </button>
-        </div>
-
         <div class="flex-1"></div>
 
         <div class="action-group action-group-danger">
@@ -111,6 +76,7 @@
               <th class="h-10 w-10 text-center pl-3">
                 <input type="checkbox" :checked="allSelected" @change="toggleAll" />
               </th>
+              <th class="h-10 w-14 text-center px-3 font-medium text-[12px] uppercase tracking-wide text-slate-500">编号</th>
               <th class="h-10 text-center px-3 font-medium text-[12px] uppercase tracking-wide text-slate-500">颜色</th>
               <th class="h-10 text-center px-3 font-medium text-[12px] uppercase tracking-wide text-slate-500">名称</th>
               <th class="h-10 text-center px-3 font-medium text-[12px] uppercase tracking-wide text-slate-500">状态</th>
@@ -121,12 +87,13 @@
           </thead>
           <tbody>
             <tr
-              v-for="env in filteredEnvironments"
+              v-for="(env, index) in paginatedEnvironments"
               :key="env.id"
               class="border-b border-slate-100 hover:bg-slate-50 transition-colors duration-150 cursor-pointer"
               :class="{ 'bg-blue-50 border-l-2 border-l-blue-500': isSelected(env.id) }"
             >
               <td class="py-2.5 pl-3 text-center"><input type="checkbox" :checked="isSelected(env.id)" @change="toggleSelection(env.id)" /></td>
+              <td class="py-2.5 px-3 text-center text-xs font-medium text-slate-500">{{ rowNumber(index) }}</td>
               <td class="py-2.5 px-3 text-center">
                 <span class="inline-block w-4 h-4 rounded-full" :style="{ backgroundColor: env.color }"></span>
               </td>
@@ -166,6 +133,12 @@
           <button @click="openCreateDialog" class="mt-3 btn-primary text-xs">创建第一个环境</button>
         </div>
       </div>
+      <PaginationBar
+        v-if="filteredEnvironments.length > 0"
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :total="filteredEnvironments.length"
+      />
     </div>
 
     <!-- EnvironmentEditor 弹窗（单建 + 编辑 + 批量创建统一） -->
@@ -203,7 +176,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useStore } from 'vuex'
 import type { Environment } from '@/types'
 import GroupSidebar from '@/components/layout/GroupSidebar.vue'
@@ -211,6 +184,7 @@ import EnvironmentEditor from '@/components/EnvironmentEditor.vue'
 import ImportExportDialog from '@/components/ImportExportDialog.vue'
 import CookieManager from '@/components/CookieManager.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import PaginationBar from '@/components/common/PaginationBar.vue'
 import { toast } from '@/utils/toast'
 
 const store = useStore()
@@ -223,14 +197,25 @@ const showImportExport = ref(false)
 const showCookieManager = ref(false)
 const cookieEnv = ref<Environment | null>(null)
 const showDeleteConfirm = ref(false)
+const currentPage = ref(1)
 
 onMounted(() => {
+  store.dispatch('settings/fetch')
   store.dispatch('environments/fetchAll')
   store.dispatch('groups/fetchAll')
 })
 
 // --- Data ---
 const environments = computed(() => (store.state.environments as any)?.list || [])
+const settings = computed(() => (store.state.settings as any)?.data || {})
+const currentGroupId = computed(() => (store.state.ui as any)?.currentGroupId)
+const pageSize = computed({
+  get: () => normalizePageSize(settings.value.environmentPageSize),
+  set: (nextSize: number) => {
+    currentPage.value = 1
+    void store.dispatch('settings/save', { environmentPageSize: normalizePageSize(nextSize) })
+  },
+})
 const selectedIds = computed<string[]>(() => (store.state.ui as any)?.selectedEnvIds || [])
 const selectionCount = computed(() => selectedIds.value.length)
 const selectedEnvironments = computed(() =>
@@ -246,15 +231,13 @@ const selectedRunningCount = computed(() => selectedRunning.value.length)
 const selectedStoppedCount = computed(() => selectedStopped.value.length)
 const canLaunchSelected = computed(() => selectedStoppedCount.value > 0)
 const canStopSelected = computed(() => selectedRunningCount.value > 0)
-const canOperateWindows = computed(() => selectedRunningCount.value > 0)
-const canStartSync = computed(() => selectedRunningCount.value >= 2)
 const canDeleteSelected = computed(() => selectionCount.value > 0)
 const selectionSummary = computed(() => {
   if (selectionCount.value === 0) return '未选择环境'
   return `已选择 ${selectionCount.value} 个环境`
 })
 const allSelected = computed(
-  () => filteredEnvironments.value.length > 0 && filteredEnvironments.value.every((e: any) => selectedIds.value.includes(e.id))
+  () => paginatedEnvironments.value.length > 0 && paginatedEnvironments.value.every((e: any) => selectedIds.value.includes(e.id))
 )
 const deleteConfirmMessage = computed(() =>
   `确认删除选中的 ${selectedIds.value.length} 个环境？此操作不可恢复。`
@@ -262,7 +245,7 @@ const deleteConfirmMessage = computed(() =>
 
 const filteredEnvironments = computed(() => {
   let result = environments.value
-  const groupId = (store.state.ui as any)?.currentGroupId
+  const groupId = currentGroupId.value
 
   // 分组筛选
   if (groupId !== undefined && groupId !== null && groupId !== '') {
@@ -286,13 +269,27 @@ const filteredEnvironments = computed(() => {
 
   return result
 })
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredEnvironments.value.length / pageSize.value)))
+const paginatedEnvironments = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredEnvironments.value.slice(start, start + pageSize.value)
+})
+
+watch([searchQuery, statusFilter, currentGroupId], () => {
+  currentPage.value = 1
+})
+
+watch([totalPages, pageSize], () => {
+  if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
+  if (currentPage.value < 1) currentPage.value = 1
+}, { immediate: true })
 
 // --- Actions ---
 function isSelected(id: string): boolean { return selectedIds.value.includes(id) }
 function toggleSelection(id: string): void { store.commit('ui/TOGGLE_ENV_SELECTION', id) }
 function toggleAll(): void {
-  if (allSelected.value) store.commit('ui/CLEAR_SELECTION')
-  else filteredEnvironments.value.forEach((e: any) => store.commit('ui/SELECT_ENV', e.id))
+  if (allSelected.value) paginatedEnvironments.value.forEach((e: any) => store.commit('ui/DESELECT_ENV', e.id))
+  else paginatedEnvironments.value.forEach((e: any) => store.commit('ui/SELECT_ENV', e.id))
 }
 
 async function launchEnv(id: string) {
@@ -376,49 +373,6 @@ async function batchLaunch() {
     }
   }, 500)
 }
-async function startSyncMode() {
-  const runningIds = selectedRunning.value.map((e: any) => e.id)
-
-  if (runningIds.length < 2) {
-    toast.warning('至少选择 2 个运行中的浏览器环境才能开始同步')
-    return
-  }
-
-  try {
-    const success = await window.electronAPI.startSync(runningIds)
-    if (success) toast.success('已开始同步，窗口已自动排列')
-    else toast.error('开始同步失败，请确认浏览器窗口已正常启动')
-  } catch (error: any) {
-    toast.error(`开始同步失败: ${error?.message || '未知错误'}`)
-  }
-}
-async function arrangeSelectedWindows() {
-  const runningIds = selectedRunning.value.map((e: any) => e.id)
-  if (runningIds.length === 0) return
-  try {
-    await window.electronAPI.invoke('windows-arrange', { envIds: runningIds })
-  } catch (e) {
-    console.error('[arrangeSelectedWindows] error:', e)
-  }
-}
-async function maximizeSelectedWindows() {
-  const runningIds = selectedRunning.value.map((e: any) => e.id)
-  if (runningIds.length === 0) return
-  try {
-    await window.electronAPI.invoke('windows-maximize', { envIds: runningIds })
-  } catch (e) {
-    console.error('[maximizeSelectedWindows] error:', e)
-  }
-}
-async function minimizeSelectedWindows() {
-  const runningIds = selectedRunning.value.map((e: any) => e.id)
-  if (runningIds.length === 0) return
-  try {
-    await window.electronAPI.invoke('windows-minimize', { envIds: runningIds })
-  } catch (e) {
-    console.error('[minimizeSelectedWindows] error:', e)
-  }
-}
 async function batchClose() {
   const toClose = selectedRunning.value
   if (toClose.length === 0) return
@@ -441,6 +395,13 @@ async function confirmBatchDelete() {
 }
 
 // --- Helpers ---
+function normalizePageSize(value: unknown): number {
+  const size = Number(value)
+  return [10, 20, 50, 100].includes(size) ? size : 10
+}
+function rowNumber(index: number): number {
+  return (currentPage.value - 1) * pageSize.value + index + 1
+}
 function statusBadgeClass(status: string) {
   return {
     running: 'bg-emerald-50 text-emerald-700',
@@ -504,9 +465,5 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
 }
 .action-btn-start { background: linear-gradient(135deg, #10b981, #059669); }
 .action-btn-stop { background: linear-gradient(135deg, #f97316, #ea580c); }
-.action-btn-arrange { background: linear-gradient(135deg, #64748b, #334155); }
-.action-btn-maximize { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
-.action-btn-minimize { background: linear-gradient(135deg, #06b6d4, #0284c7); }
-.action-btn-sync { background: linear-gradient(135deg, #2563eb, #0f766e); }
 .action-btn-delete { background: linear-gradient(135deg, #ef4444, #b91c1c); }
 </style>

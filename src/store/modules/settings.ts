@@ -8,6 +8,8 @@ const defaultSettings: Settings = {
   autoStart: false,
   minimizeToTray: false,
   syncDelay: 50,
+  environmentPageSize: 10,
+  proxyPageSize: 10,
 }
 
 export default {
@@ -34,7 +36,7 @@ export default {
     async fetch({ commit }) {
       try {
         const settings = await window.electronAPI.invoke<Settings>('get-settings')
-        commit('SET_SETTINGS', settings || defaultSettings)
+        commit('SET_SETTINGS', { ...defaultSettings, ...(settings || {}) })
       } catch (error: any) {
         commit('SET_ERROR', error.message)
       }

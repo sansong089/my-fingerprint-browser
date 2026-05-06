@@ -85,6 +85,7 @@
           <th class="h-10 w-10 px-3 text-center">
             <input type="checkbox" :checked="allSelected" :indeterminate="isIndeterminate" @change="toggleAll" class="cursor-pointer" />
           </th>
+          <th class="h-10 w-14 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500">编号</th>
           <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500">名称</th>
           <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500">类型</th>
           <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500">地址</th>
@@ -94,11 +95,12 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="p in filteredProxies" :key="p.id" class="border-b border-slate-100 hover:bg-slate-50 transition-colors"
+        <tr v-for="(p, index) in paginatedProxies" :key="p.id" class="border-b border-slate-100 hover:bg-slate-50 transition-colors"
           :class="{ 'bg-blue-50/60': selectedIds.includes(p.id) }">
           <td class="py-2.5 px-3 text-center">
             <input type="checkbox" :checked="selectedIds.includes(p.id)" @change="toggleSelect(p.id)" class="cursor-pointer" />
           </td>
+          <td class="py-2.5 px-4 text-center text-xs font-medium text-slate-500">{{ rowNumber(index) }}</td>
           <td class="py-2.5 px-4 font-medium text-slate-700 text-center">{{ p.name }}</td>
           <td class="py-2.5 px-4 text-center">
             <span class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">{{ p.type.toUpperCase() }}</span>
@@ -128,6 +130,14 @@
       <p class="text-sm">{{ currentGroupId !== null && currentGroupId !== '' ? '该分组暂无代理' : '暂无代理配置' }}</p>
       <button @click="openCreate" class="mt-3 btn-primary text-xs">添加第一个代理</button>
     </div>
+
+    <PaginationBar
+      v-if="filteredProxies.length > 0"
+      v-model:current-page="currentPage"
+      v-model:page-size="pageSize"
+      :total="filteredProxies.length"
+      class="mt-3 rounded-lg border border-slate-200"
+    />
 
     <!-- 新建 / 编辑分组弹窗 -->
     <div v-if="showGroupDialog" class="fixed inset-0 bg-black/30 flex items-center justify-center z-50" @mousedown.self="closeGroupDialog">
@@ -270,9 +280,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, nextTick } from 'vue'
+import { ref, computed, reactive, onMounted, nextTick, watch } from 'vue'
 import { useStore } from 'vuex'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import PaginationBar from '@/components/common/PaginationBar.vue'
 import { toast } from '@/utils/toast'
 
 const store = useStore()
@@ -294,6 +305,7 @@ const pendingDeleteGroupName = ref('')
 const showDeleteProxyConfirm = ref(false)
 const pendingDeleteProxyIds = ref<string[]>([])
 const pendingDeleteProxyName = ref('')
+const currentPage = ref(1)
 
 const form = reactive({
   name: '',
@@ -327,6 +339,7 @@ function validateAll(): boolean {
 }
 
 onMounted(() => {
+  store.dispatch('settings/fetch')
   store.dispatch('proxies/fetchAll')
   store.dispatch('environments/fetchAll')
   store.dispatch('proxyGroups/fetchAll')
@@ -334,6 +347,14 @@ onMounted(() => {
 
 const proxies = computed(() => (store.state.proxies as any)?.list || [])
 const environments = computed(() => (store.state.environments as any)?.list || [])
+const settings = computed(() => (store.state.settings as any)?.data || {})
+const pageSize = computed({
+  get: () => normalizePageSize(settings.value.proxyPageSize),
+  set: (nextSize: number) => {
+    currentPage.value = 1
+    void store.dispatch('settings/save', { proxyPageSize: normalizePageSize(nextSize) })
+  },
+})
 const sortedGroups = computed(() => (store.state.proxyGroups as any)?.list?.slice().sort((a: any, b: any) => a.order - b.order) || [])
 
 const filteredProxies = computed(() => {
@@ -341,12 +362,17 @@ const filteredProxies = computed(() => {
   if (currentGroupId.value === '') return proxies.value.filter((p: any) => !p.groupId || p.groupId === '')
   return proxies.value.filter((p: any) => p.groupId === currentGroupId.value)
 })
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredProxies.value.length / pageSize.value)))
+const paginatedProxies = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredProxies.value.slice(start, start + pageSize.value)
+})
 
 const allSelected = computed(() =>
-  filteredProxies.value.length > 0 && filteredProxies.value.every((p: any) => selectedIds.value.includes(p.id))
+  paginatedProxies.value.length > 0 && paginatedProxies.value.every((p: any) => selectedIds.value.includes(p.id))
 )
 const isIndeterminate = computed(() =>
-  selectedIds.value.length > 0 && !allSelected.value
+  paginatedProxies.value.some((p: any) => selectedIds.value.includes(p.id)) && !allSelected.value
 )
 const deleteGroupConfirmMessage = computed(() =>
   pendingDeleteGroupName.value
@@ -369,9 +395,19 @@ function usageCount(proxy: any): string {
   return count > 0 ? `${count} 个环境` : '-'
 }
 
+watch(currentGroupId, () => {
+  currentPage.value = 1
+})
+
+watch([totalPages, pageSize], () => {
+  if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
+  if (currentPage.value < 1) currentPage.value = 1
+}, { immediate: true })
+
 function toggleAll() {
-  if (allSelected.value) selectedIds.value = []
-  else selectedIds.value = filteredProxies.value.map((p: any) => p.id)
+  const pageIds = paginatedProxies.value.map((p: any) => p.id)
+  if (allSelected.value) selectedIds.value = selectedIds.value.filter(id => !pageIds.includes(id))
+  else selectedIds.value = Array.from(new Set([...selectedIds.value, ...pageIds]))
 }
 function toggleSelect(id: string) {
   const idx = selectedIds.value.indexOf(id)
@@ -482,6 +518,15 @@ function proxyStatusClass(s: string) {
 }
 function proxyStatusLabel(s: string) {
   return { available: '可用', unavailable: '不可用', unchecked: '未检测' }[s] ?? s
+}
+
+function normalizePageSize(value: unknown): number {
+  const size = Number(value)
+  return [10, 20, 50, 100].includes(size) ? size : 10
+}
+
+function rowNumber(index: number): number {
+  return (currentPage.value - 1) * pageSize.value + index + 1
 }
 
 async function focusGroupDialogInput() {

@@ -21,7 +21,7 @@
               <div class="flex gap-2">
                 <input v-model="localSettings.browserPath" type="text" class="input flex-1" placeholder="例如: C:\fingerprint-chromium\chrome.exe">
               </div>
-              <p class="text-xs text-gray-500 mt-1">请填写 fingerprint-chromium 或 Chrome 的可执行文件完整路径</p>
+              <p class="text-xs text-gray-500 mt-1">留空时默认使用应用内嵌 fingerprint Chromium；也可填写其他浏览器完整路径覆盖</p>
             </div>
             
             <div>
@@ -112,7 +112,9 @@ const localSettings = ref<Settings>({
   defaultLang: 'en-US',
   autoStart: false,
   minimizeToTray: false,
-  syncDelay: 50
+  syncDelay: 50,
+  environmentPageSize: 10,
+  proxyPageSize: 10
 })
 
 onMounted(async () => {

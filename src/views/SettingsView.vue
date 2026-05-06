@@ -7,7 +7,7 @@
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">浏览器路径</label>
         <input v-model="settings.browserPath" type="text" placeholder="留空则自动检测" class="input w-full" />
-        <p class="text-xs text-slate-400 mt-1">指定 Chrome/Edge 可执行文件路径</p>
+        <p class="text-xs text-slate-400 mt-1">留空时默认使用应用内嵌 fingerprint Chromium；也可指定其他浏览器路径</p>
       </div>
 
       <!-- 默认平台 -->

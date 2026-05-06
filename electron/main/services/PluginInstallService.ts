@@ -96,23 +96,21 @@ class PluginInstallService {
     this.ensureBackendProof()
     const targets = pluginCatalogService.getTargetsForEnvironment(envId).filter(target => target.desiredState === 'installed')
     const desiredPluginIds = targets.map(target => target.pluginId)
-    const suppressedPluginIds = pluginProfileService.detectSuppressedFromPreferences(userDataDir, desiredPluginIds)
     const extensionDirs = targets
-      .filter(target => !suppressedPluginIds.includes(target.pluginId))
       .map(target => pluginCatalogService.getPlugin(target.pluginId))
       .filter((plugin): plugin is PluginRecord => !!plugin)
       .map(plugin => pluginArtifactService.resolveAbsolutePath(plugin.artifactRelativePath))
       .filter(dir => pluginArtifactService.isAbsoluteArtifactReady(dir))
 
-    pluginProfileService.markLaunchedPlugins(userDataDir, targets.map(target => target.pluginId).filter(pluginId => !suppressedPluginIds.includes(pluginId)))
+    pluginProfileService.markLaunchedPlugins(userDataDir, desiredPluginIds)
 
-    return { extensionDirs, suppressedPluginIds, desiredPluginIds }
+    return { extensionDirs, suppressedPluginIds: [], desiredPluginIds }
   }
 
   getSuppressedByEnvironment(): Record<string, string[]> {
     const result: Record<string, string[]> = {}
     for (const env of storageService.getEnvironments()) {
-      result[env.id] = pluginProfileService.getState(env.userDataDir).suppressedPluginIds
+      result[env.id] = []
     }
     return result
   }

@@ -5,8 +5,9 @@
   "main": "dist-electron/main/index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build && electron-builder",
-    "build:win": "vue-tsc --noEmit && vite build && electron-builder --win",
+    "prepare:fingerprint-browser": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-fingerprint-browser.ps1",
+    "build": "npm run prepare:fingerprint-browser && vue-tsc --noEmit && vite build && electron-builder",
+    "build:win": "npm run prepare:fingerprint-browser && vue-tsc --noEmit && vite build && electron-builder --win",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -42,6 +43,15 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/fingerprint-chromium",
+        "to": "fingerprint-chromium",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "win": {
       "target": [

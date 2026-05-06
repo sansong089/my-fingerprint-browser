@@ -64,7 +64,6 @@ import {
   LayoutDashboard,
   Monitor,
   Globe,
-  Puzzle,
   Code,
   Settings as SettingsIcon,
 } from 'lucide-vue-next'
@@ -84,7 +83,7 @@ const navItems: NavItem[] = [
   { path: '/', label: '概览', icon: LayoutDashboard },
   { path: '/environments', label: '环境', icon: Monitor },
   { path: '/proxies', label: '代理', icon: Globe },
-  { path: '/plugins', label: '插件', icon: Puzzle, activePrefix: '/plugins' },
+  { path: '/plugins', label: '插件', icon: Code, activePrefix: '/plugins' },
   { path: '/scripts', label: '脚本', icon: Code },
   { path: '/settings', label: '设置', icon: SettingsIcon },
 ]

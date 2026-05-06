@@ -51,6 +51,8 @@ export interface Settings {
   autoStart: boolean
   minimizeToTray: boolean
   syncDelay: number
+  environmentPageSize: number
+  proxyPageSize: number
 }
 
 export interface PluginRecord {
@@ -109,7 +111,9 @@ const defaultSettings: Settings = {
   defaultLang: 'en-US',
   autoStart: false,
   minimizeToTray: false,
-  syncDelay: 50
+  syncDelay: 50,
+  environmentPageSize: 10,
+  proxyPageSize: 10
 }
 
 /**
@@ -238,7 +242,7 @@ class StorageService {
   // ==================== Settings ====================
 
   getSettings(): Settings {
-    return this.store.get('settings', defaultSettings)
+    return { ...defaultSettings, ...this.store.get('settings', defaultSettings) }
   }
 
   saveSettings(settings: Settings): void {

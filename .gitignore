@@ -27,6 +27,8 @@ playwright-report/
 # TypeScript / Vite cache
 *.tsbuildinfo
 .vite/
+.cache/
+vendor/fingerprint-chromium/
 
 # Native build intermediates
 *.obj

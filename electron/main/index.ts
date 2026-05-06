@@ -22,6 +22,8 @@ import { pluginStoreWindowService } from './services/PluginStoreWindowService'
 let mainWindow: BrowserWindow | null = null
 let floatingToolbarWindow: BrowserWindow | null = null
 let suppressFloatingToolbarClose = false
+const FLOATING_TOOLBAR_WIDTH = 590
+const FLOATING_TOOLBAR_HEIGHT = 50
 const preload = join(__dirname, '../preload/index.js')
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 const runtimeLogDir = join(process.cwd(), 'output', 'logs')
@@ -70,20 +72,31 @@ function buildFloatingToolbarHtml(runningCount: number, syncActive: boolean) {
     <head>
       <meta charset="utf-8" />
       <style>
+        html,
         body {
           margin: 0;
-          font-family: "Segoe UI", system-ui, sans-serif;
-          background: rgba(15, 23, 42, 0.96);
-          color: white;
-          border: 1px solid rgba(148, 163, 184, 0.35);
-          border-radius: 12px;
+          width: 100%;
+          height: 100%;
           overflow: hidden;
+          background: transparent;
         }
-        .wrap {
+        body {
+          font-family: "Segoe UI", system-ui, sans-serif;
+          color: white;
+          display: flex;
+        }
+        .toolbar {
+          width: 100%;
+          height: 100%;
           padding: 10px 12px;
           display: flex;
           gap: 8px;
           align-items: center;
+          box-sizing: border-box;
+          background: rgba(15, 23, 42, 0.96);
+          border: 1px solid rgba(148, 163, 184, 0.35);
+          border-radius: 12px;
+          overflow: hidden;
           -webkit-app-region: drag;
         }
         .dot {
@@ -134,7 +147,7 @@ function buildFloatingToolbarHtml(runningCount: number, syncActive: boolean) {
       </style>
     </head>
     <body>
-      <div class="wrap">
+      <div class="toolbar">
         <div class="dot"></div>
         <div class="meta">
           <div class="title">${syncActive ? '窗口同步中' : '实例运行中'}</div>
@@ -196,8 +209,8 @@ function openFloatingToolbarWindow() {
   }
 
   floatingToolbarWindow = new BrowserWindow({
-    width: 590,
-    height: 74,
+    width: FLOATING_TOOLBAR_WIDTH,
+    height: FLOATING_TOOLBAR_HEIGHT,
     resizable: false,
     maximizable: false,
     minimizable: false,

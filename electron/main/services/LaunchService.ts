@@ -6,6 +6,8 @@ import { storageService, Environment, FingerprintConfig } from './StorageService
 import { eventBus } from '../managers/BrowserEventBus'
 import { syncExtensionService } from './SyncExtensionService'
 
+const WINDOWS_SAFE_COMMAND_LINE_LENGTH = 28000
+
 export interface LaunchOptions {
   userDataDir: string
   cdpPort: number
@@ -80,9 +82,15 @@ class LaunchService {
   private getPossibleBrowserPaths(): string[] {
     const appData = app.getPath('appData')
     const appPath = app.getAppPath()
+    const embeddedBrowserPaths = [
+      join(process.resourcesPath, 'fingerprint-chromium', 'chrome.exe'),
+      join(appPath, 'vendor', 'fingerprint-chromium', 'chrome.exe'),
+      join(process.cwd(), 'vendor', 'fingerprint-chromium', 'chrome.exe'),
+    ]
     
     if (process.platform === 'win32') {
       return [
+        ...embeddedBrowserPaths,
         join(appData, 'Local', 'fingerprint-chromium', 'chrome.exe'),
         join(appData, 'Local', 'Google', 'Chrome', 'Application', 'chrome.exe'),
         join(appData, 'Programs', 'Google', 'Chrome', 'Application', 'chrome.exe'),
@@ -240,6 +248,15 @@ class LaunchService {
 
     const launchCommand = this.formatCommand(browserPath, spawnArgs)
     this.lastLaunchCommands.set(envId, launchCommand)
+
+    if (process.platform === 'win32' && launchCommand.length > WINDOWS_SAFE_COMMAND_LINE_LENGTH) {
+      console.error(
+        `ERROR: Browser launch command is too long (${launchCommand.length} chars). ` +
+        'Reduce enabled plugins or shorten the application data path.'
+      )
+      this.lastLaunchCommands.delete(envId)
+      return false
+    }
 
     console.log('=== Browser Launch ===')
     console.log('Command:', launchCommand)
