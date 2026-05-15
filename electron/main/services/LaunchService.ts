@@ -16,11 +16,20 @@ export interface LaunchOptions {
   url?: string
   syncExtensionDir?: string
   managedExtensionDirs?: string[]
+  launchMode?: 'cdp' | 'standard'
+}
+
+export interface EnvironmentRuntimeInfo {
+  isRunning: boolean
+  launchMode: 'cdp' | 'standard' | null
+  pid: number | null
+  cdpPort: number | null
 }
 
 class LaunchService {
   private processes: Map<string, ChildProcess> = new Map()
   private lastLaunchCommands: Map<string, string> = new Map()
+  private launchModes: Map<string, 'cdp' | 'standard'> = new Map()
   private browserPath: string = ''
 
   constructor() {
@@ -113,12 +122,15 @@ class LaunchService {
   buildArgs(options: LaunchOptions): string[] {
     const args: string[] = []
     const fp = options.fingerprint
+    const launchMode = options.launchMode || 'cdp'
 
     // 基础参数
     args.push(`--user-data-dir=${options.userDataDir}`)
-    args.push(`--remote-debugging-port=${options.cdpPort}`)
-    // 安全：CDP 仅监听本地（P1 风险修复）
-    args.push('--remote-debugging-address=127.0.0.1')
+    if (launchMode === 'cdp') {
+      args.push(`--remote-debugging-port=${options.cdpPort}`)
+      // 安全：CDP 仅监听本地（P1 风险修复）
+      args.push('--remote-debugging-address=127.0.0.1')
+    }
     args.push(`--no-first-run`)
     args.push(`--no-default-browser-check`)
     
@@ -198,6 +210,32 @@ class LaunchService {
     return [command, ...args].map(part => this.quoteCommandPart(part)).join(' ')
   }
 
+  private waitForProcessStable(proc: ChildProcess, timeoutMs = 500): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false
+
+      const finish = (result: boolean) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        resolve(result)
+      }
+
+      const cleanup = () => {
+        proc.removeListener('error', onError)
+        proc.removeListener('exit', onExit)
+      }
+
+      const onError = () => finish(false)
+      const onExit = () => finish(false)
+
+      proc.once('error', onError)
+      proc.once('exit', onExit)
+
+      setTimeout(() => finish(true), timeoutMs)
+    })
+  }
+
   // 等待 CDP 就绪（轮询检测，替代原来的 setTimeout 1000ms 硬等）
   async waitForCDPReady(port: number, timeoutMs = 5000): Promise<boolean> {
     const start = Date.now()
@@ -230,7 +268,8 @@ class LaunchService {
       return false
     }
 
-    const args = this.buildArgs({ ...options, syncExtensionDir })
+    const launchMode = options.launchMode || 'cdp'
+    const args = this.buildArgs({ ...options, syncExtensionDir, launchMode })
     const spawnArgs = [...args]
     let browserPath = this.browserPath
 
@@ -277,6 +316,7 @@ class LaunchService {
       console.log('Browser exited with code:', code)
       this.processes.delete(envId)
       this.lastLaunchCommands.delete(envId)
+      this.launchModes.delete(envId)
       // P1#6 修复：通知渲染进程浏览器已退出
       eventBus.emit('browser-event', {
         type: 'closed',
@@ -292,15 +332,23 @@ class LaunchService {
         this.processes.delete(envId)
       }
       this.lastLaunchCommands.delete(envId)
+      this.launchModes.delete(envId)
     })
 
-    // 使用 CDP 端口轮询替代 setTimeout 1000ms 硬等（P0#3 修复）
-    const cdpReady = await this.waitForCDPReady(options.cdpPort)
-    if (cdpReady) {
-      this.processes.set(envId, proc)
+    let launchReady = false
+    if (launchMode === 'cdp') {
+      // 使用 CDP 端口轮询替代 setTimeout 1000ms 硬等（P0#3 修复）
+      launchReady = await this.waitForCDPReady(options.cdpPort)
+    } else {
+      launchReady = await this.waitForProcessStable(proc)
     }
 
-    return cdpReady
+    if (launchReady) {
+      this.processes.set(envId, proc)
+      this.launchModes.set(envId, launchMode)
+    }
+
+    return launchReady
   }
 
   // 关闭浏览器
@@ -315,6 +363,7 @@ class LaunchService {
         }
         this.processes.delete(envId)
         this.lastLaunchCommands.delete(envId)
+        this.launchModes.delete(envId)
         return true
       } catch (e) {
         console.error('Close browser error:', e)
@@ -350,6 +399,29 @@ class LaunchService {
   /** 获取最近一次启动命令 */
   getLaunchCommand(envId: string): string | undefined {
     return this.lastLaunchCommands.get(envId)
+  }
+
+  getLaunchMode(envId: string): 'cdp' | 'standard' | null {
+    return this.launchModes.get(envId) || null
+  }
+
+  getRuntimeInfo(envId: string, cdpPort?: number): EnvironmentRuntimeInfo {
+    const proc = this.processes.get(envId)
+    const launchMode = this.getLaunchMode(envId)
+    const isRunning = !!proc && !proc.killed
+
+    return {
+      isRunning,
+      launchMode,
+      pid: isRunning ? proc?.pid ?? null : null,
+      cdpPort: isRunning && launchMode === 'cdp' ? cdpPort ?? null : null,
+    }
+  }
+
+  getRunningEnvironmentIds(): string[] {
+    return Array.from(this.processes.entries())
+      .filter(([, proc]) => !!proc && !proc.killed)
+      .map(([envId]) => envId)
   }
 }
 

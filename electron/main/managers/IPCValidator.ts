@@ -78,6 +78,14 @@ const schemas: Record<string, ChannelSchema> = {
     name: { type: 'string', min: 1, max: 50 },
     color: { type: 'string' },
   },
+  'groups-update': {
+    id: { type: 'string', required: true, min: 1 },
+    name: { type: 'string', min: 1, max: 50 },
+    color: { type: 'string' },
+  },
+  'groups-delete': {
+    id: { type: 'string', required: true, min: 1 },
+  },
   'proxy-groups-create': {
     name: { type: 'string', min: 1, max: 50 },
     color: { type: 'string' },

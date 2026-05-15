@@ -17,6 +17,7 @@ import { syncExtensionService } from './services/SyncExtensionService'
 import { pluginCatalogService } from './services/PluginCatalogService'
 import { pluginInstallService } from './services/PluginInstallService'
 import { pluginStoreWindowService } from './services/PluginStoreWindowService'
+import { localApiService } from './services/LocalApiService'
 
 // Global references
 let mainWindow: BrowserWindow | null = null
@@ -427,6 +428,7 @@ function createWindow() {
 app.whenReady().then(() => {
   runtimeLog('app:whenReady')
   environmentManager.resetRunningStatuses()
+  localApiService.start()
   createWindow()
 
   app.on('activate', () => {
@@ -493,9 +495,11 @@ ipcMain.handle('delete-environment', (_, id) => {
 
 // --- Browser operations ---
 ipcMain.handle('launch-browser', async (_, envId) => {
-  const validation = validateIPC('launch-browser', { envId })
+  const payload = typeof envId === 'string' ? { envId } : (envId || {})
+  const validation = validateIPC('launch-browser', payload)
   if (!validation.success) throw new Error(validation.error)
-  const launched = await environmentManager.launchBrowser(envId)
+  const launchMode = payload.launchMode === 'standard' ? 'standard' : 'cdp'
+  const launched = await environmentManager.launchBrowser(validation.data.envId, launchMode)
   refreshFloatingToolbarVisibility()
   return launched
 })
@@ -1164,6 +1168,7 @@ ipcMain.handle('batch-close', async (_, params) => {
 
 // ==================== App Lifecycle ====================
 app.on('before-quit', () => {
+  localApiService.stop()
   runtimeLog('app:before-quit:shutdown-activity-log')
   activityLogService.shutdown()
 })

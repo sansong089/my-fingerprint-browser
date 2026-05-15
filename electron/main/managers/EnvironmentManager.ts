@@ -1,6 +1,6 @@
 // Environment Manager - manages browser environments
 import { storageService, Environment, FingerprintConfig, ProxyConfig } from '../services/StorageService'
-import { launchService } from '../services/LaunchService'
+import { launchService, type EnvironmentRuntimeInfo } from '../services/LaunchService'
 import { activityLogService } from './ActivityLogService'
 import { eventBus } from './BrowserEventBus'
 import { pluginCatalogService } from '../services/PluginCatalogService'
@@ -88,7 +88,7 @@ class EnvironmentManager {
   }
 
   // Launch browser
-  async launchBrowser(id: string): Promise<boolean> {
+  async launchBrowser(id: string, launchMode: 'cdp' | 'standard' = 'cdp'): Promise<boolean> {
     const env = storageService.getEnvironments().find(e => e.id === id)
     if (!env) return false
 
@@ -107,19 +107,26 @@ class EnvironmentManager {
       fingerprint: env.fingerprint,
       proxy,
       managedExtensionDirs: pluginLaunchContext.extensionDirs,
+      launchMode,
       ...(proxyAuth ? { proxyAuth } : {}),
     })
 
     if (success) {
       this.updateEnvironment(id, { status: 'running', launchedAt: new Date().toISOString() })
-      eventBus.emit('browser-event', { type: 'launched', envId: id, pid: launchService.getPid(id), cdpPort: env.cdpPort })
+      eventBus.emit('browser-event', {
+        type: 'launched',
+        envId: id,
+        pid: launchService.getPid(id),
+        cdpPort: launchMode === 'cdp' ? env.cdpPort : undefined,
+        launchMode,
+      })
       const launchCommand = launchService.getLaunchCommand(id)
       activityLogService.log({
         envId: id,
         action: 'launch',
         details: launchCommand
-          ? `启动环境: ${env.name} | 命令: ${launchCommand}`
-          : `启动环境: ${env.name}`,
+          ? `启动环境: ${env.name} | 模式: ${launchMode} | 命令: ${launchCommand}`
+          : `启动环境: ${env.name} | 模式: ${launchMode}`,
       })
     }
 
@@ -155,6 +162,36 @@ class EnvironmentManager {
   // Get environment by ID
   getEnvironment(id: string): Environment | undefined {
     return storageService.getEnvironments().find(e => e.id === id)
+  }
+
+  getEnvironmentRuntime(id: string): EnvironmentRuntimeInfo | null {
+    const env = this.getEnvironment(id)
+    if (!env) return null
+    return launchService.getRuntimeInfo(id, env.cdpPort)
+  }
+
+  getEnvironmentView(id: string): (Environment & { runtime: EnvironmentRuntimeInfo; launchedAt?: string }) | null {
+    const env = this.getEnvironment(id)
+    if (!env) return null
+
+    const runtime = launchService.getRuntimeInfo(id, env.cdpPort)
+    return {
+      ...env,
+      runtime: {
+        ...runtime,
+        cdpPort: runtime.launchMode === 'cdp' ? runtime.cdpPort : null,
+      },
+    }
+  }
+
+  getEnvironmentViews(): Array<Environment & { runtime: EnvironmentRuntimeInfo; launchedAt?: string }> {
+    return this.getEnvironments()
+      .map(env => this.getEnvironmentView(env.id))
+      .filter((env): env is Environment & { runtime: EnvironmentRuntimeInfo; launchedAt?: string } => !!env)
+  }
+
+  getRunningEnvironmentViews(): Array<Environment & { runtime: EnvironmentRuntimeInfo; launchedAt?: string }> {
+    return this.getEnvironmentViews().filter(env => env.runtime.isRunning)
   }
 
   // Migrate environment (change userDataDir)
