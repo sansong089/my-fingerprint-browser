@@ -11,6 +11,7 @@ const defaultFingerprint = (): FingerprintConfig => ({
   hardwareConcurrency: 4,
   timezone: 'Asia/Shanghai',
   lang: 'en-US',
+  followIpGeo: false,
 })
 
 export interface EnvironmentsState {
@@ -116,6 +117,7 @@ export default {
         hardwareConcurrency: fp.hardwareConcurrency || 4,
         timezone: fp.timezone || 'Asia/Shanghai',
         lang: fp.lang || 'en-US',
+        followIpGeo: !!fp.followIpGeo,
         disabledSpoofing: fp.disabledSpoofing || [],
       }
 

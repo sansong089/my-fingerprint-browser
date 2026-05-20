@@ -14,6 +14,7 @@ export interface FingerprintConfig {
   hardwareConcurrency?: number
   timezone?: string
   lang?: string
+  followIpGeo?: boolean
   disabledSpoofing?: string[]
 }
 

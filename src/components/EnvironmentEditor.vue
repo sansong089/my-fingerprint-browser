@@ -105,14 +105,53 @@
                 <input v-model.number="formData.fingerprint.hardwareConcurrency" type="number" class="input text-sm">
               </div>
 
+              <label class="flex items-start gap-2 rounded-md border-t border-gray-200 bg-slate-50 px-3 py-2 pt-3">
+                <input v-model="formData.fingerprint.followIpGeo" type="checkbox" class="mt-0.5 w-4 h-4">
+                <span>
+                  <span class="block text-xs text-gray-700">跟随 IP 归属地</span>
+                  <span class="block text-[11px] text-gray-500">开启后，启动浏览器前根据当前出口 IP 自动决定语言和时区。</span>
+                </span>
+              </label>
+
               <div>
                 <label class="block text-xs text-gray-600 mb-1">时区</label>
-                <input v-model="formData.fingerprint.timezone" type="text" class="input text-sm" placeholder="Asia/Shanghai">
+                <select
+                  v-model="formData.fingerprint.timezone"
+                  class="input text-sm"
+                  :disabled="formData.fingerprint.followIpGeo"
+                  :class="{ 'bg-slate-100 text-slate-400 cursor-not-allowed': formData.fingerprint.followIpGeo }"
+                  @change="onTimezoneChange"
+                >
+                  <option
+                    v-if="formData.fingerprint.timezone && !isKnownTimezone(formData.fingerprint.timezone)"
+                    :value="formData.fingerprint.timezone"
+                  >
+                    {{ formData.fingerprint.timezone }}
+                  </option>
+                  <option v-for="timezone in TIMEZONE_OPTIONS" :key="timezone.value" :value="timezone.value">
+                    {{ timezone.label }}
+                  </option>
+                </select>
               </div>
 
               <div>
                 <label class="block text-xs text-gray-600 mb-1">语言</label>
-                <input v-model="formData.fingerprint.lang" type="text" class="input text-sm" placeholder="en-US">
+                <select
+                  v-model="formData.fingerprint.lang"
+                  class="input text-sm"
+                  :disabled="formData.fingerprint.followIpGeo"
+                  :class="{ 'bg-slate-100 text-slate-400 cursor-not-allowed': formData.fingerprint.followIpGeo }"
+                >
+                  <option
+                    v-if="formData.fingerprint.lang && !isKnownLanguage(formData.fingerprint.lang)"
+                    :value="formData.fingerprint.lang"
+                  >
+                    {{ formData.fingerprint.lang }}
+                  </option>
+                  <option v-for="language in LANGUAGE_OPTIONS" :key="language.value" :value="language.value">
+                    {{ language.label }}
+                  </option>
+                </select>
               </div>
             </div>
           </div>
@@ -203,6 +242,13 @@
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useStore } from 'vuex'
 import type { Environment, FingerprintConfig, ProxyConfig } from '@/store/index'
+import {
+  LANGUAGE_OPTIONS,
+  TIMEZONE_OPTIONS,
+  getRecommendedLanguageForTimezone,
+  isKnownLanguage,
+  isKnownTimezone,
+} from '@/constants/localeOptions'
 
 const store = useStore()
 
@@ -293,7 +339,8 @@ const defaultFingerprint = (): FingerprintConfig => ({
   brandVersion: '120.0.6099.71',
   hardwareConcurrency: 4,
   timezone: 'Asia/Shanghai',
-  lang: 'en-US'
+  lang: 'en-US',
+  followIpGeo: false,
 })
 
 const defaultProxy = (): ProxyConfig => ({
@@ -372,6 +419,13 @@ function onSelectProxyFromPool() {
       host: proxy.host,
       port: proxy.port,
     }
+  }
+}
+
+function onTimezoneChange() {
+  const recommendedLang = getRecommendedLanguageForTimezone(formData.value.fingerprint.timezone)
+  if (recommendedLang) {
+    formData.value.fingerprint.lang = recommendedLang
   }
 }
 

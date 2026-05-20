@@ -5,6 +5,7 @@ import { activityLogService } from './ActivityLogService'
 import { eventBus } from './BrowserEventBus'
 import { pluginCatalogService } from '../services/PluginCatalogService'
 import { pluginInstallService } from '../services/PluginInstallService'
+import { geoLocaleService, type GeoLocaleResult } from '../services/GeoLocaleService'
 
 class EnvironmentManager {
   constructor() {
@@ -100,11 +101,17 @@ class EnvironmentManager {
         : undefined
 
     const pluginLaunchContext = pluginInstallService.getLaunchContextForEnvironment(env.id, env.userDataDir)
+    const geoLocale = env.fingerprint.followIpGeo
+      ? await this.resolveGeoLocaleForLaunch(env)
+      : null
+    const launchFingerprint = geoLocale
+      ? { ...env.fingerprint, timezone: geoLocale.timezone, lang: geoLocale.lang }
+      : env.fingerprint
 
     const success = await launchService.launch(id, {
       userDataDir: env.userDataDir,
       cdpPort: env.cdpPort,
-      fingerprint: env.fingerprint,
+      fingerprint: launchFingerprint,
       proxy,
       managedExtensionDirs: pluginLaunchContext.extensionDirs,
       launchMode,
@@ -125,12 +132,29 @@ class EnvironmentManager {
         envId: id,
         action: 'launch',
         details: launchCommand
-          ? `启动环境: ${env.name} | 模式: ${launchMode} | 命令: ${launchCommand}`
-          : `启动环境: ${env.name} | 模式: ${launchMode}`,
+          ? `启动环境: ${env.name} | 模式: ${launchMode}${this.formatGeoLocaleLog(geoLocale)} | 命令: ${launchCommand}`
+          : `启动环境: ${env.name} | 模式: ${launchMode}${this.formatGeoLocaleLog(geoLocale)}`,
       })
     }
 
     return success
+  }
+
+  private async resolveGeoLocaleForLaunch(env: Environment): Promise<GeoLocaleResult> {
+    const settings = storageService.getSettings()
+    return geoLocaleService.resolveForLaunch(env.proxy, {
+      timezone: settings.defaultTimezone || env.fingerprint.timezone || 'Asia/Shanghai',
+      lang: settings.defaultLang || env.fingerprint.lang || 'en-US',
+    })
+  }
+
+  private formatGeoLocaleLog(result: GeoLocaleResult | null): string {
+    if (!result) return ''
+    if (result.source === 'fallback') {
+      return ` | IP归属地: 解析失败，使用默认 ${result.timezone}/${result.lang}`
+    }
+    const location = result.countryName || result.countryCode || result.ip || 'unknown'
+    return ` | IP归属地: ${location} ${result.timezone}/${result.lang}`
   }
 
   // Close browser
