@@ -498,7 +498,7 @@ ipcMain.handle('launch-browser', async (_, envId) => {
   const payload = typeof envId === 'string' ? { envId } : (envId || {})
   const validation = validateIPC('launch-browser', payload)
   if (!validation.success) throw new Error(validation.error)
-  const launchMode = payload.launchMode === 'standard' ? 'standard' : 'cdp'
+  const launchMode = payload.launchMode === 'cdp' ? 'cdp' : 'standard'
   const launched = await environmentManager.launchBrowser(validation.data.envId, launchMode)
   refreshFloatingToolbarVisibility()
   return launched
@@ -510,6 +510,14 @@ ipcMain.handle('close-browser', (_, envId) => {
   const closed = environmentManager.closeBrowser(envId)
   refreshFloatingToolbarVisibility()
   return closed
+})
+
+ipcMain.handle('create-desktop-shortcut', async (_, payload) => {
+  const params = typeof payload === 'string' ? { envId: payload } : (payload || {})
+  const validation = validateIPC('create-desktop-shortcut', params)
+  if (!validation.success) throw new Error(validation.error)
+  const launchMode = params.launchMode === 'cdp' ? 'cdp' : 'standard'
+  return environmentManager.createDesktopShortcut(validation.data.envId, launchMode)
 })
 
 ipcMain.handle('get-browser-status', (_, envId) => {

@@ -6,6 +6,11 @@ import { eventBus } from './BrowserEventBus'
 import { pluginCatalogService } from '../services/PluginCatalogService'
 import { pluginInstallService } from '../services/PluginInstallService'
 import { geoLocaleService, type GeoLocaleResult } from '../services/GeoLocaleService'
+import { app } from 'electron'
+import { join } from 'path'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { spawnSync } from 'child_process'
 
 class EnvironmentManager {
   constructor() {
@@ -37,6 +42,7 @@ class EnvironmentManager {
     tags?: string[]
     color?: string
     groupId?: string
+    cdpPort?: number
   }): Environment {
     const environments = storageService.getEnvironments()
     
@@ -46,7 +52,7 @@ class EnvironmentManager {
       fingerprint: data.fingerprint,
       proxy: data.proxy,
       userDataDir: this.generateUserDataDir(),
-      cdpPort: this.getAvailableCDPPort(), // P0#2：主进程唯一分配端口
+      cdpPort: this.resolveCDPPort(data.cdpPort), // 未配置时由主进程分配
       createdAt: new Date().toISOString(),
       lastUsed: new Date().toISOString(),
       tags: data.tags || [],
@@ -71,7 +77,11 @@ class EnvironmentManager {
     
     if (!env) return null
 
-    const updated = { ...env, ...data, lastUsed: new Date().toISOString() }
+    const nextData = { ...data }
+    if (data.cdpPort !== undefined) {
+      nextData.cdpPort = this.resolveCDPPort(data.cdpPort)
+    }
+    const updated = { ...env, ...nextData, lastUsed: new Date().toISOString() }
     storageService.updateEnvironment(id, updated)
     return updated
   }
@@ -89,34 +99,12 @@ class EnvironmentManager {
   }
 
   // Launch browser
-  async launchBrowser(id: string, launchMode: 'cdp' | 'standard' = 'cdp'): Promise<boolean> {
+  async launchBrowser(id: string, launchMode: 'cdp' | 'standard' = 'standard'): Promise<boolean> {
     const env = storageService.getEnvironments().find(e => e.id === id)
     if (!env) return false
 
-    const proxy = env.proxy ? `${env.proxy.type}://${env.proxy.host}:${env.proxy.port}` : undefined
-    // P1#8：代理认证参数
-    const proxyAuth =
-      env.proxy?.username && env.proxy.password
-        ? `${env.proxy.username}:${env.proxy.password}`
-        : undefined
-
-    const pluginLaunchContext = pluginInstallService.getLaunchContextForEnvironment(env.id, env.userDataDir)
-    const geoLocale = env.fingerprint.followIpGeo
-      ? await this.resolveGeoLocaleForLaunch(env)
-      : null
-    const launchFingerprint = geoLocale
-      ? { ...env.fingerprint, timezone: geoLocale.timezone, lang: geoLocale.lang }
-      : env.fingerprint
-
-    const success = await launchService.launch(id, {
-      userDataDir: env.userDataDir,
-      cdpPort: env.cdpPort,
-      fingerprint: launchFingerprint,
-      proxy,
-      managedExtensionDirs: pluginLaunchContext.extensionDirs,
-      launchMode,
-      ...(proxyAuth ? { proxyAuth } : {}),
-    })
+    const launchConfig = await this.buildLaunchOptionsForEnvironment(env, launchMode)
+    const success = await launchService.launch(id, launchConfig.options)
 
     if (success) {
       this.updateEnvironment(id, { status: 'running', launchedAt: new Date().toISOString() })
@@ -132,12 +120,139 @@ class EnvironmentManager {
         envId: id,
         action: 'launch',
         details: launchCommand
-          ? `启动环境: ${env.name} | 模式: ${launchMode}${this.formatGeoLocaleLog(geoLocale)} | 命令: ${launchCommand}`
-          : `启动环境: ${env.name} | 模式: ${launchMode}${this.formatGeoLocaleLog(geoLocale)}`,
+          ? `启动环境: ${env.name} | 模式: ${launchMode}${this.formatGeoLocaleLog(launchConfig.geoLocale)} | 命令: ${launchCommand}`
+          : `启动环境: ${env.name} | 模式: ${launchMode}${this.formatGeoLocaleLog(launchConfig.geoLocale)}`,
       })
     }
 
     return success
+  }
+
+  private async buildLaunchOptionsForEnvironment(
+    env: Environment,
+    launchMode: 'cdp' | 'standard' = 'standard'
+  ) {
+    const proxy = env.proxy ? `${env.proxy.type}://${env.proxy.host}:${env.proxy.port}` : undefined
+    const proxyAuth =
+      env.proxy?.username && env.proxy.password
+        ? `${env.proxy.username}:${env.proxy.password}`
+        : undefined
+
+    const pluginLaunchContext = pluginInstallService.getLaunchContextForEnvironment(env.id, env.userDataDir)
+    const geoLocale = env.fingerprint.followIpGeo
+      ? await this.resolveGeoLocaleForLaunch(env)
+      : null
+    const launchFingerprint = geoLocale
+      ? { ...env.fingerprint, timezone: geoLocale.timezone, lang: geoLocale.lang }
+      : env.fingerprint
+
+    return {
+      launchMode,
+      geoLocale,
+      options: {
+        userDataDir: env.userDataDir,
+        cdpPort: env.cdpPort,
+        fingerprint: launchFingerprint,
+        proxy,
+        managedExtensionDirs: pluginLaunchContext.extensionDirs,
+        launchMode,
+        ...(proxyAuth ? { proxyAuth } : {}),
+      },
+    }
+  }
+
+  async createDesktopShortcut(id: string, launchMode: 'cdp' | 'standard' = 'standard'): Promise<string> {
+    if (process.platform !== 'win32') {
+      throw new Error('当前仅支持 Windows 桌面快捷方式')
+    }
+
+    const env = this.getEnvironment(id)
+    if (!env) {
+      throw new Error(`Environment ${id} not found`)
+    }
+
+    const launchConfig = await this.buildLaunchOptionsForEnvironment(env, launchMode)
+    const launchSpec = launchService.createLaunchSpec(launchConfig.options)
+    if (!launchSpec) {
+      throw new Error('无法生成启动命令，请先检查浏览器路径配置')
+    }
+
+    const desktopDir = app.getPath('desktop')
+    const shortcutName = this.sanitizeShortcutFileName(
+      launchMode === 'cdp' ? `${env.name} 调试启动.lnk` : `${env.name}.lnk`
+    )
+    const shortcutPath = join(desktopDir, shortcutName)
+    this.writeWindowsShortcut({
+      shortcutPath,
+      targetPath: launchSpec.browserPath,
+      argumentsText: launchSpec.args.join(' '),
+      workingDirectory: app.getPath('home'),
+      description: launchMode === 'cdp'
+        ? `${env.name} 调试启动快捷方式`
+        : `${env.name} 启动快捷方式`,
+      iconLocation: launchSpec.browserPath,
+    })
+
+    activityLogService.log({
+      envId: id,
+      action: 'launch',
+      details: `创建桌面快捷方式: ${env.name} | 模式: ${launchMode} | 路径: ${shortcutPath} | 命令: ${launchSpec.command}`,
+    })
+
+    return shortcutPath
+  }
+
+  private sanitizeShortcutFileName(name: string): string {
+    return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'environment-shortcut.lnk'
+  }
+
+  private writeWindowsShortcut(options: {
+    shortcutPath: string
+    targetPath: string
+    argumentsText: string
+    workingDirectory: string
+    description: string
+    iconLocation: string
+  }): void {
+    const scriptDir = mkdtempSync(join(tmpdir(), 'fingerprint-shortcut-'))
+    const scriptPath = join(scriptDir, 'create-shortcut.ps1')
+
+    const escapeSingleQuoted = (value: string) => value.replace(/'/g, "''")
+    const script = [
+      '$ErrorActionPreference = "Stop"',
+      `$shortcutPath = '${escapeSingleQuoted(options.shortcutPath)}'`,
+      `$targetPath = '${escapeSingleQuoted(options.targetPath)}'`,
+      `$argumentsText = '${escapeSingleQuoted(options.argumentsText)}'`,
+      `$workingDirectory = '${escapeSingleQuoted(options.workingDirectory)}'`,
+      `$description = '${escapeSingleQuoted(options.description)}'`,
+      `$iconLocation = '${escapeSingleQuoted(options.iconLocation)}'`,
+      '$wsh = New-Object -ComObject WScript.Shell',
+      '$shortcut = $wsh.CreateShortcut($shortcutPath)',
+      '$shortcut.TargetPath = $targetPath',
+      '$shortcut.Arguments = $argumentsText',
+      '$shortcut.WorkingDirectory = $workingDirectory',
+      '$shortcut.Description = $description',
+      '$shortcut.IconLocation = $iconLocation',
+      '$shortcut.Save()',
+    ].join('\r\n')
+
+    writeFileSync(scriptPath, script, 'utf8')
+
+    try {
+      const result = spawnSync(
+        'powershell.exe',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+        { encoding: 'utf8', windowsHide: true }
+      )
+
+      if (result.status !== 0) {
+        const stderr = (result.stderr || '').trim()
+        const stdout = (result.stdout || '').trim()
+        throw new Error(stderr || stdout || 'PowerShell returned a non-zero exit code')
+      }
+    } finally {
+      rmSync(scriptDir, { recursive: true, force: true })
+    }
   }
 
   private async resolveGeoLocaleForLaunch(env: Environment): Promise<GeoLocaleResult> {
@@ -260,7 +375,7 @@ class EnvironmentManager {
 
   private getAvailableCDPPort(): number {
     const environments = storageService.getEnvironments()
-    const usedPorts = new Set(environments.map(e => e.cdpPort))
+    const usedPorts = new Set(environments.map(e => e.cdpPort).filter(Boolean))
     
     for (let port = 9222; port <= 9322; port++) {
       if (!usedPorts.has(port)) {
@@ -269,6 +384,13 @@ class EnvironmentManager {
     }
     
     return 9222 + environments.length
+  }
+
+  private resolveCDPPort(port?: number): number {
+    if (Number.isInteger(port) && port! >= 1024 && port! <= 65535) {
+      return port!
+    }
+    return this.getAvailableCDPPort()
   }
 
   private generateColor(): string {
@@ -281,7 +403,7 @@ class EnvironmentManager {
   /** 批量启动 */
   async batchLaunch(envIds: string[]): Promise<{ success: string[]; failed: string[] }> {
     const results = await Promise.allSettled(
-      envIds.map(id => this.launchBrowser(id))
+      envIds.map(id => this.launchBrowser(id, 'standard'))
     )
     const success: string[] = []
     const failed: string[] = []

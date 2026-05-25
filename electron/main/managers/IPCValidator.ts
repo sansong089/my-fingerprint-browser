@@ -64,9 +64,14 @@ const schemas: Record<string, ChannelSchema> = {
   },
   'launch-browser': {
     envId: { type: 'string', required: true },
+    launchMode: { type: 'string' },
   },
   'close-browser': {
     envId: { type: 'string', required: true },
+  },
+  'create-desktop-shortcut': {
+    envId: { type: 'string', required: true },
+    launchMode: { type: 'string' },
   },
   'batch-launch': {
     envIds: { type: 'array', required: true },

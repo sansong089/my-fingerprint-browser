@@ -19,6 +19,12 @@ export interface LaunchOptions {
   launchMode?: 'cdp' | 'standard'
 }
 
+export interface LaunchSpec {
+  browserPath: string
+  args: string[]
+  command: string
+}
+
 export interface EnvironmentRuntimeInfo {
   isRunning: boolean
   launchMode: 'cdp' | 'standard' | null
@@ -122,7 +128,7 @@ class LaunchService {
   buildArgs(options: LaunchOptions): string[] {
     const args: string[] = []
     const fp = options.fingerprint
-    const launchMode = options.launchMode || 'cdp'
+    const launchMode = options.launchMode || 'standard'
 
     // 基础参数
     args.push(`--user-data-dir=${options.userDataDir}`)
@@ -210,6 +216,46 @@ class LaunchService {
     return [command, ...args].map(part => this.quoteCommandPart(part)).join(' ')
   }
 
+  private resolveBrowserPath(): string | null {
+    const browserPath = this.browserPath
+    if (!browserPath) {
+      console.error('ERROR: Browser path not found. Configure a browser path in Settings.')
+      return null
+    }
+
+    if (!existsSync(browserPath)) {
+      console.error('ERROR: Browser not found at:', browserPath)
+      console.log('Please configure correct browser path in Settings.')
+      return null
+    }
+
+    return browserPath
+  }
+
+  createLaunchSpec(options: LaunchOptions): LaunchSpec | null {
+    const browserPath = this.resolveBrowserPath()
+    if (!browserPath) {
+      return null
+    }
+
+    const args = this.buildArgs(options)
+    const command = this.formatCommand(browserPath, args)
+
+    if (process.platform === 'win32' && command.length > WINDOWS_SAFE_COMMAND_LINE_LENGTH) {
+      console.error(
+        `ERROR: Browser launch command is too long (${command.length} chars). ` +
+        'Reduce enabled plugins or shorten the application data path.'
+      )
+      return null
+    }
+
+    return {
+      browserPath,
+      args,
+      command,
+    }
+  }
+
   private waitForProcessStable(proc: ChildProcess, timeoutMs = 500): Promise<boolean> {
     return new Promise((resolve) => {
       let settled = false
@@ -268,34 +314,14 @@ class LaunchService {
       return false
     }
 
-    const launchMode = options.launchMode || 'cdp'
-    const args = this.buildArgs({ ...options, syncExtensionDir, launchMode })
-    const spawnArgs = [...args]
-    let browserPath = this.browserPath
-
-    // 检查浏览器是否存在
-    if (!browserPath) {
-      console.error('ERROR: Browser path not found. Configure a browser path in Settings.')
+    const launchMode = options.launchMode || 'standard'
+    const launchSpec = this.createLaunchSpec({ ...options, syncExtensionDir, launchMode })
+    if (!launchSpec) {
       return false
     }
 
-    if (!existsSync(browserPath)) {
-      console.error('ERROR: Browser not found at:', browserPath)
-      console.log('Please configure correct browser path in Settings.')
-      return false
-    }
-
-    const launchCommand = this.formatCommand(browserPath, spawnArgs)
+    const { browserPath, args: spawnArgs, command: launchCommand } = launchSpec
     this.lastLaunchCommands.set(envId, launchCommand)
-
-    if (process.platform === 'win32' && launchCommand.length > WINDOWS_SAFE_COMMAND_LINE_LENGTH) {
-      console.error(
-        `ERROR: Browser launch command is too long (${launchCommand.length} chars). ` +
-        'Reduce enabled plugins or shorten the application data path.'
-      )
-      this.lastLaunchCommands.delete(envId)
-      return false
-    }
 
     console.log('=== Browser Launch ===')
     console.log('Command:', launchCommand)
