@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, screen, type Point, type Rectangle } from 'electron'
 import { join } from 'path'
 import { appendFileSync, mkdirSync } from 'fs'
 
@@ -23,18 +23,43 @@ import { localApiService } from './services/LocalApiService'
 let mainWindow: BrowserWindow | null = null
 let floatingToolbarWindow: BrowserWindow | null = null
 let suppressFloatingToolbarClose = false
+let suppressFloatingToolbarMove = false
+let floatingToolbarMode: FloatingToolbarMode = 'floating'
+let floatingToolbarCursorMonitor: ReturnType<typeof setInterval> | null = null
+let floatingToolbarIsDragging = false
 const FLOATING_TOOLBAR_WIDTH = 590
 const FLOATING_TOOLBAR_HEIGHT = 50
+const FLOATING_TOOLBAR_COLLAPSED_THICKNESS = 3
+const FLOATING_TOOLBAR_TOP_DOCK_THRESHOLD = 14
+const FLOATING_TOOLBAR_CURSOR_MONITOR_INTERVAL = 50
 const preload = join(__dirname, '../preload/index.js')
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 const runtimeLogDir = join(process.cwd(), 'output', 'logs')
 const runtimeLogFile = join(runtimeLogDir, 'main-runtime.log')
 
+type FloatingToolbarEdge = 'top' | 'right' | 'bottom' | 'left'
+type FloatingToolbarMode = 'floating' | 'collapsedTop' | 'expandedTop'
+
+interface FloatingToolbarDockState {
+  edge: FloatingToolbarEdge
+  offset: number
+  collapsed: boolean
+  displayId?: number
+  x?: number
+  y?: number
+}
+
+interface FloatingToolbarFreeState {
+  x: number
+  y: number
+  displayId?: number
+}
+
 syncExtensionService.setSyncStateProvider(() => syncController.getState())
 
 eventBus.on('browser-event', (event) => {
   if (event?.type === 'launched' || event?.type === 'closed' || event?.type === 'crashed') {
-    setTimeout(() => refreshFloatingToolbarVisibility(), 50)
+    refreshFloatingToolbarVisibility()
   }
 })
 
@@ -65,6 +90,255 @@ function getRunningEnvironments() {
 
 function getRunningEnvIds(): string[] {
   return getRunningEnvironments().map(env => env.id)
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function getDefaultFloatingToolbarDock(): FloatingToolbarDockState {
+  const display = screen.getPrimaryDisplay()
+  const area = display.workArea
+  return {
+    edge: 'top',
+    offset: Math.max(0, Math.floor((area.width - FLOATING_TOOLBAR_WIDTH) / 2)),
+    collapsed: false,
+    displayId: display.id,
+  }
+}
+
+function normalizeFloatingToolbarDock(value: any): FloatingToolbarDockState {
+  const fallback = getDefaultFloatingToolbarDock()
+  const edge = ['top', 'right', 'bottom', 'left'].includes(value?.edge) ? value.edge : fallback.edge
+  const offset = typeof value?.offset === 'number' && Number.isFinite(value.offset) && value.offset >= 0 ? value.offset : fallback.offset
+  const displayId = typeof value?.displayId === 'number' ? value.displayId : fallback.displayId
+
+  return {
+    edge,
+    offset,
+    collapsed: value?.collapsed === true,
+    displayId,
+    x: typeof value?.x === 'number' && Number.isFinite(value.x) ? value.x : undefined,
+    y: typeof value?.y === 'number' && Number.isFinite(value.y) ? value.y : undefined,
+  }
+}
+
+function getDefaultFloatingToolbarFreeState(): FloatingToolbarFreeState {
+  const display = screen.getPrimaryDisplay()
+  const area = display.workArea
+  return {
+    x: area.x + Math.max(0, Math.floor((area.width - FLOATING_TOOLBAR_WIDTH) / 2)),
+    y: area.y + 8,
+    displayId: display.id,
+  }
+}
+
+function normalizeFloatingToolbarFree(value: any): FloatingToolbarFreeState {
+  const fallback = getDefaultFloatingToolbarFreeState()
+  const displayId = typeof value?.displayId === 'number' ? value.displayId : fallback.displayId
+  return {
+    x: typeof value?.x === 'number' && Number.isFinite(value.x) ? value.x : fallback.x,
+    y: typeof value?.y === 'number' && Number.isFinite(value.y) ? value.y : fallback.y,
+    displayId,
+  }
+}
+
+function getFloatingToolbarDockState(): FloatingToolbarDockState {
+  return normalizeFloatingToolbarDock(storageService.getSettings().floatingToolbarDock)
+}
+
+function saveFloatingToolbarDockState(dock: FloatingToolbarDockState) {
+  const settings = storageService.getSettings()
+  storageService.saveSettings({
+    ...settings,
+    floatingToolbarDock: normalizeFloatingToolbarDock(dock),
+  })
+}
+
+function saveFloatingToolbarFreeState(free: FloatingToolbarFreeState) {
+  const settings = storageService.getSettings()
+  storageService.saveSettings({
+    ...settings,
+    floatingToolbarDock: {
+      ...normalizeFloatingToolbarDock(settings.floatingToolbarDock),
+      ...normalizeFloatingToolbarFree(free),
+      collapsed: false,
+    },
+  })
+}
+
+function getFloatingToolbarDisplay(dock: FloatingToolbarDockState) {
+  const displays = screen.getAllDisplays()
+  return displays.find(display => display.id === dock.displayId) || screen.getPrimaryDisplay()
+}
+
+function getFloatingToolbarBounds(dock: FloatingToolbarDockState, collapsed = dock.collapsed) {
+  const display = getFloatingToolbarDisplay(dock)
+  const area = display.workArea
+  if (!collapsed) {
+    if (typeof (dock as any).x !== 'number' && dock.edge === 'top') {
+      return {
+        x: area.x + clamp(Math.round(dock.offset), 0, Math.max(0, area.width - FLOATING_TOOLBAR_WIDTH)),
+        y: area.y,
+        width: FLOATING_TOOLBAR_WIDTH,
+        height: FLOATING_TOOLBAR_HEIGHT,
+      }
+    }
+
+    const free = normalizeFloatingToolbarFree(dock)
+    return {
+      x: clamp(Math.round(free.x), area.x, area.x + Math.max(0, area.width - FLOATING_TOOLBAR_WIDTH)),
+      y: clamp(Math.round(free.y), area.y, area.y + Math.max(0, area.height - FLOATING_TOOLBAR_HEIGHT)),
+      width: FLOATING_TOOLBAR_WIDTH,
+      height: FLOATING_TOOLBAR_HEIGHT,
+    }
+  }
+
+  const offset = clamp(Math.round(dock.offset), 0, Math.max(0, area.width - FLOATING_TOOLBAR_WIDTH))
+  return {
+    x: area.x + offset,
+    y: area.y,
+    width: FLOATING_TOOLBAR_WIDTH,
+    height: FLOATING_TOOLBAR_COLLAPSED_THICKNESS,
+  }
+}
+
+function setFloatingToolbarCollapsedClass(collapsed: boolean) {
+  if (!floatingToolbarWindow || floatingToolbarWindow.isDestroyed()) return
+  floatingToolbarWindow.webContents.executeJavaScript(
+    `document.body.classList.toggle('collapsed', ${collapsed ? 'true' : 'false'});`
+  ).catch(() => {})
+}
+
+function getFloatingToolbarDisplayForBounds(bounds: Rectangle) {
+  return screen.getDisplayNearestPoint({
+    x: bounds.x + Math.floor(bounds.width / 2),
+    y: bounds.y + Math.floor(bounds.height / 2),
+  })
+}
+
+function isToolbarNearTop(bounds: Rectangle, display = getFloatingToolbarDisplayForBounds(bounds)) {
+  return bounds.y <= display.workArea.y + FLOATING_TOOLBAR_TOP_DOCK_THRESHOLD
+}
+
+function isCursorInsideToolbar(cursor: Point, bounds: Rectangle) {
+  return cursor.x >= bounds.x
+    && cursor.x <= bounds.x + bounds.width
+    && cursor.y >= bounds.y
+    && cursor.y <= bounds.y + bounds.height
+}
+
+function getFloatingToolbarTopDockFromBounds(bounds: Rectangle): FloatingToolbarDockState {
+  const display = getFloatingToolbarDisplayForBounds(bounds)
+  const area = display.workArea
+
+  return {
+    edge: 'top',
+    offset: clamp(Math.round(bounds.x - area.x), 0, Math.max(0, area.width - FLOATING_TOOLBAR_WIDTH)),
+    collapsed: true,
+    displayId: display.id,
+    x: bounds.x,
+    y: area.y,
+  }
+}
+
+function stopFloatingToolbarCursorMonitor() {
+  if (!floatingToolbarCursorMonitor) return
+  clearInterval(floatingToolbarCursorMonitor)
+  floatingToolbarCursorMonitor = null
+}
+
+function checkFloatingToolbarCursor() {
+  if (!floatingToolbarWindow || floatingToolbarWindow.isDestroyed()) return
+  if (floatingToolbarMode === 'collapsedTop' || floatingToolbarIsDragging) return
+
+  const bounds = floatingToolbarWindow.getBounds()
+  const cursor = screen.getCursorScreenPoint()
+  if (isCursorInsideToolbar(cursor, bounds)) return
+
+  const display = getFloatingToolbarDisplayForBounds(bounds)
+  if (isToolbarNearTop(bounds, display)) {
+    setToolbarMode('collapsedTop', getFloatingToolbarTopDockFromBounds(bounds))
+    return
+  }
+
+  setToolbarMode('floating', {
+    ...getFloatingToolbarDockState(),
+    collapsed: false,
+    displayId: display.id,
+    x: bounds.x,
+    y: bounds.y,
+  })
+}
+
+function startFloatingToolbarCursorMonitor() {
+  if (floatingToolbarCursorMonitor) return
+  floatingToolbarCursorMonitor = setInterval(checkFloatingToolbarCursor, FLOATING_TOOLBAR_CURSOR_MONITOR_INTERVAL)
+  checkFloatingToolbarCursor()
+}
+
+function syncToolbarBoundsForMode(mode: FloatingToolbarMode, dock = getFloatingToolbarDockState()) {
+  if (!floatingToolbarWindow || floatingToolbarWindow.isDestroyed()) return
+
+  suppressFloatingToolbarMove = true
+  floatingToolbarWindow.setBounds(getFloatingToolbarBounds(dock, mode === 'collapsedTop'), false)
+  setFloatingToolbarCollapsedClass(mode === 'collapsedTop')
+  suppressFloatingToolbarMove = false
+  floatingToolbarWindow.moveTop()
+  floatingToolbarWindow.setAlwaysOnTop(true, 'screen-saver')
+}
+
+function setToolbarMode(mode: FloatingToolbarMode, dock = getFloatingToolbarDockState()) {
+  floatingToolbarMode = mode
+
+  if (mode === 'floating') {
+    stopFloatingToolbarCursorMonitor()
+    saveFloatingToolbarFreeState({
+      x: normalizeFloatingToolbarFree(dock).x,
+      y: normalizeFloatingToolbarFree(dock).y,
+      displayId: dock.displayId,
+    })
+    syncToolbarBoundsForMode(mode, { ...dock, collapsed: false })
+    return
+  }
+
+  const topDock = { ...dock, edge: 'top' as const, collapsed: true }
+  saveFloatingToolbarDockState(topDock)
+  syncToolbarBoundsForMode(mode, topDock)
+
+  if (mode === 'expandedTop') {
+    startFloatingToolbarCursorMonitor()
+  } else {
+    stopFloatingToolbarCursorMonitor()
+  }
+}
+
+function expandFloatingToolbarWindow() {
+  if (!floatingToolbarWindow || floatingToolbarWindow.isDestroyed()) return
+  if (floatingToolbarMode !== 'collapsedTop') return
+
+  setToolbarMode('expandedTop', getFloatingToolbarDockState())
+}
+
+function updateFloatingToolbarDockFromPosition() {
+  if (!floatingToolbarWindow || floatingToolbarWindow.isDestroyed() || suppressFloatingToolbarMove) return
+
+  floatingToolbarIsDragging = false
+  const bounds = floatingToolbarWindow.getBounds()
+  const display = getFloatingToolbarDisplayForBounds(bounds)
+
+  if (isToolbarNearTop(bounds, display)) {
+    setToolbarMode('expandedTop', getFloatingToolbarTopDockFromBounds(bounds))
+    return
+  }
+
+  setToolbarMode('floating', {
+    ...getFloatingToolbarDockState(),
+    collapsed: false,
+    displayId: display.id,
+    x: bounds.x,
+    y: bounds.y,
+  })
 }
 
 function buildFloatingToolbarHtml(runningCount: number, syncActive: boolean) {
@@ -99,6 +373,30 @@ function buildFloatingToolbarHtml(runningCount: number, syncActive: boolean) {
           border-radius: 12px;
           overflow: hidden;
           -webkit-app-region: drag;
+        }
+        body.collapsed .toolbar {
+          padding: 0;
+          gap: 0;
+          background: rgba(15, 23, 42, 0.96);
+          border: 1px solid rgba(148, 163, 184, 0.35);
+          border-radius: 999px;
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.28),
+            inset 0 -1px 2px rgba(0, 0, 0, 0.42),
+            0 2px 6px rgba(15, 23, 42, 0.35);
+          -webkit-app-region: no-drag;
+        }
+        body.collapsed .toolbar::after {
+          content: "";
+          display: block;
+          width: 100%;
+          height: 100%;
+          background: transparent;
+        }
+        body.collapsed .dot,
+        body.collapsed .meta,
+        body.collapsed .actions {
+          display: none;
         }
         .dot {
           width: 10px;
@@ -164,6 +462,16 @@ function buildFloatingToolbarHtml(runningCount: number, syncActive: boolean) {
       </div>
       <script>
         const { ipcRenderer } = require('electron')
+        let expandRequested = false
+        const expandToolbar = () => {
+          if (!document.body.classList.contains('collapsed') || expandRequested) return
+          expandRequested = true
+          ipcRenderer.invoke('floating-toolbar-expand').finally(() => { expandRequested = false })
+        }
+        window.addEventListener('mouseenter', expandToolbar)
+        window.addEventListener('mouseover', expandToolbar)
+        window.addEventListener('mousemove', expandToolbar)
+        window.addEventListener('pointerenter', expandToolbar)
         document.getElementById('toggle-sync').addEventListener('click', () => ipcRenderer.invoke('floating-toolbar-toggle-sync'))
         document.getElementById('arrange').addEventListener('click', () => ipcRenderer.invoke('floating-toolbar-arrange'))
         document.getElementById('minimize').addEventListener('click', () => ipcRenderer.invoke('floating-toolbar-minimize'))
@@ -180,6 +488,7 @@ function closeFloatingToolbarWindow() {
     return
   }
 
+  stopFloatingToolbarCursorMonitor()
   suppressFloatingToolbarClose = true
   floatingToolbarWindow.close()
   floatingToolbarWindow = null
@@ -198,6 +507,16 @@ function refreshFloatingToolbarVisibility() {
   openFloatingToolbarWindow()
 }
 
+function renderFloatingToolbarWindow(html: string) {
+  if (!floatingToolbarWindow || floatingToolbarWindow.isDestroyed()) return
+
+  floatingToolbarWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+    .then(() => {
+      setFloatingToolbarCollapsedClass(floatingToolbarMode === 'collapsedTop')
+    })
+    .catch(() => {})
+}
+
 function openFloatingToolbarWindow() {
   const runningCount = getRunningEnvironments().length
   if (runningCount === 0) return
@@ -205,7 +524,7 @@ function openFloatingToolbarWindow() {
   const html = buildFloatingToolbarHtml(runningCount, syncController.isActive())
 
   if (floatingToolbarWindow && !floatingToolbarWindow.isDestroyed()) {
-    floatingToolbarWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+    renderFloatingToolbarWindow(html)
     return
   }
 
@@ -229,11 +548,29 @@ function openFloatingToolbarWindow() {
 
   floatingToolbarWindow.setAlwaysOnTop(true, 'screen-saver')
   floatingToolbarWindow.setVisibleOnAllWorkspaces(true)
-  floatingToolbarWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+  renderFloatingToolbarWindow(html)
   positionFloatingToolbarWindow()
+
+  floatingToolbarWindow.on('move', () => {
+    if (!suppressFloatingToolbarMove) {
+      floatingToolbarIsDragging = true
+      stopFloatingToolbarCursorMonitor()
+      if (floatingToolbarMode === 'collapsedTop') {
+        floatingToolbarMode = 'expandedTop'
+        setFloatingToolbarCollapsedClass(false)
+      }
+    }
+  })
+
+  floatingToolbarWindow.on('moved', () => {
+    updateFloatingToolbarDockFromPosition()
+  })
 
   floatingToolbarWindow.on('closed', () => {
     const shouldStopSync = !suppressFloatingToolbarClose && syncController.isActive()
+    stopFloatingToolbarCursorMonitor()
+    floatingToolbarMode = 'floating'
+    floatingToolbarIsDragging = false
     suppressFloatingToolbarClose = false
     floatingToolbarWindow = null
     if (shouldStopSync) {
@@ -245,12 +582,15 @@ function openFloatingToolbarWindow() {
 function positionFloatingToolbarWindow() {
   if (!floatingToolbarWindow || floatingToolbarWindow.isDestroyed()) return
 
-  const display = screen.getPrimaryDisplay()
-  const area = display.workArea
-  const [width] = floatingToolbarWindow.getSize()
-  const x = area.x + Math.max(0, Math.floor((area.width - width) / 2))
-  const y = area.y + 8
-  floatingToolbarWindow.setPosition(x, y, false)
+  const dock = getFloatingToolbarDockState()
+  if (dock.collapsed && dock.edge === 'top') {
+    setToolbarMode('collapsedTop', dock)
+    return
+  }
+
+  const bounds = getFloatingToolbarBounds(dock, false)
+  const mode: FloatingToolbarMode = isToolbarNearTop(bounds) ? 'expandedTop' : 'floating'
+  setToolbarMode(mode, { ...dock, collapsed: mode !== 'floating' })
 }
 
 async function invokeWindowActionForRunningEnvs(channel: 'windows-arrange' | 'windows-maximize' | 'windows-minimize') {
@@ -430,6 +770,9 @@ app.whenReady().then(() => {
   environmentManager.resetRunningStatuses()
   localApiService.start()
   createWindow()
+  screen.on('display-metrics-changed', () => positionFloatingToolbarWindow())
+  screen.on('display-added', () => positionFloatingToolbarWindow())
+  screen.on('display-removed', () => positionFloatingToolbarWindow())
 
   app.on('activate', () => {
     runtimeLog('app:activate')
@@ -567,6 +910,11 @@ ipcMain.handle('floating-toolbar-maximize', async () => {
 
 ipcMain.handle('floating-toolbar-minimize', async () => {
   return invokeWindowActionForRunningEnvs('windows-minimize')
+})
+
+ipcMain.handle('floating-toolbar-expand', () => {
+  expandFloatingToolbarWindow()
+  return true
 })
 
 ipcMain.handle('floating-toolbar-toggle-sync', async () => {
@@ -1149,7 +1497,6 @@ ipcMain.handle('import-environments', async (_, params) => {
   activityLogService.log({ envId: 'system', action: 'import', details: `导入 ${created} 个环境 (${format || 'json'})` })
   return { imported: created, total: importedEnvs.length }
 })
-
 // ==================== Activity Logs ====================
 ipcMain.handle('activity-logs', (_, params) => {
   const validation = validateIPC('activity-logs', params || {})
