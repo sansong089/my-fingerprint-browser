@@ -33,6 +33,7 @@ const FLOATING_TOOLBAR_HEIGHT = 50
 const FLOATING_TOOLBAR_COLLAPSED_THICKNESS = 3
 const FLOATING_TOOLBAR_TOP_DOCK_THRESHOLD = 14
 const FLOATING_TOOLBAR_CURSOR_MONITOR_INTERVAL = 50
+const FLOATING_TOOLBAR_MIN_RUNNING_COUNT = 2
 const preload = join(__dirname, '../preload/index.js')
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 const runtimeLogDir = join(process.cwd(), 'output', 'logs')
@@ -497,7 +498,7 @@ function closeFloatingToolbarWindow() {
 
 function refreshFloatingToolbarVisibility() {
   const runningCount = getRunningEnvironments().length
-  if (runningCount === 0) {
+  if (runningCount < FLOATING_TOOLBAR_MIN_RUNNING_COUNT) {
     if (syncController.isActive()) {
       syncController.stop()
     }
@@ -520,7 +521,7 @@ function renderFloatingToolbarWindow(html: string) {
 
 function openFloatingToolbarWindow() {
   const runningCount = getRunningEnvironments().length
-  if (runningCount === 0) return
+  if (runningCount < FLOATING_TOOLBAR_MIN_RUNNING_COUNT) return
 
   const html = buildFloatingToolbarHtml(runningCount, syncController.isActive())
 
