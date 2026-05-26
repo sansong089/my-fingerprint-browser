@@ -1,6 +1,6 @@
 import { spawn, ChildProcess } from 'child_process'
 import { join, dirname } from 'path'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { app } from 'electron'
 import { storageService, Environment, FingerprintConfig } from './StorageService'
 import { eventBus } from '../managers/BrowserEventBus'
@@ -124,6 +124,22 @@ class LaunchService {
     }
   }
 
+  /** Read the bundled fingerprint-chromium version from vendor/.version */
+  private getBundledBrandVersion(): string {
+    try {
+      const vendorDir = join(process.cwd(), 'vendor', 'fingerprint-chromium')
+      const versionFile = join(vendorDir, '.version')
+      if (existsSync(versionFile)) {
+        return readFileSync(versionFile, 'utf-8').trim()
+      }
+      const appVendorDir = join(app.getAppPath(), 'vendor', 'fingerprint-chromium')
+      const appVersionFile = join(appVendorDir, '.version')
+      if (existsSync(appVersionFile)) {
+        return readFileSync(appVersionFile, 'utf-8').trim()
+      }
+    } catch { }
+    return ''
+  }
   // 构建启动参数
   buildArgs(options: LaunchOptions): string[] {
     const args: string[] = []
@@ -153,8 +169,9 @@ class LaunchService {
     if (fp.brand) {
       args.push(`--fingerprint-brand=${fp.brand}`)
     }
-    if (fp.brandVersion) {
-      args.push(`--fingerprint-brand-version=${fp.brandVersion}`)
+    const brandVersion = fp.brandVersion || this.getBundledBrandVersion()
+    if (brandVersion) {
+      args.push(`--fingerprint-brand-version=${brandVersion}`)
     }
     if (fp.hardwareConcurrency) {
       args.push(`--fingerprint-hardware-concurrency=${fp.hardwareConcurrency}`)
@@ -448,3 +465,4 @@ class LaunchService {
 
 export const launchService = new LaunchService()
 export default LaunchService
+
