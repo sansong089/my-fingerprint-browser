@@ -101,7 +101,7 @@
               <td class="py-2.5 px-3 text-slate-500 text-xs text-center">{{ proxyLabel(env) }}</td>
               <td class="py-2.5 px-3 text-slate-400 text-xs text-center">{{ formatTime(env.lastUsed) }}</td>
               <td class="py-2.5 px-3 text-center">
-                <div class="flex items-center justify-center gap-1">
+                <div class="flex items-center justify-center gap-2">
                   <template v-if="env.status === 'running'">
                     <button @click.stop="minimizeEnv(env.id)"
                       class="row-action-btn row-action-btn--neutral" title="最小化">最小化</button>
@@ -111,10 +111,70 @@
                       class="row-action-btn row-action-btn--danger" title="关闭">关闭</button>
                   </template>
                   <template v-else>
-                    <button @click.stop="launchEnv(env.id)"
-                      class="row-action-btn row-action-btn--neutral" title="启动">启动</button>
-                    <button @click.stop="createDesktopShortcut(env.id, 'standard')"
-                      class="row-action-btn row-action-btn--info" title="创建桌面快捷方式">创建桌面快捷方式</button>
+                    <div class="row-split" @click.stop>
+                      <button
+                        @click.stop="launchEnv(env.id)"
+                        class="row-split__main row-split__main--start"
+                        title="普通启动"
+                      >
+                        启动
+                      </button>
+                      <button
+                        @click.stop="toggleLaunchMenu(env.id)"
+                        class="row-split__toggle row-split__toggle--start"
+                        :class="{ 'row-split__toggle--open': activeMenuKey === `launch:${env.id}` }"
+                        title="更多启动方式"
+                        aria-label="更多启动方式"
+                      >
+                        <span class="row-split__caret"></span>
+                      </button>
+                      <div v-if="activeMenuKey === `launch:${env.id}`" class="row-menu">
+                        <button
+                          @click.stop="launchEnv(env.id)"
+                          class="row-menu__item"
+                        >
+                          普通启动
+                        </button>
+                        <button
+                          @click.stop="debugLaunchEnv(env.id)"
+                          class="row-menu__item row-menu__item--debug"
+                        >
+                          调试启动
+                        </button>
+                      </div>
+                    </div>
+                    <div class="row-split" @click.stop>
+                      <button
+                        @click.stop="createDesktopShortcut(env.id, 'standard')"
+                        class="row-split__main row-split__main--shortcut"
+                        title="创建桌面快捷方式"
+                      >
+                        创建桌面快捷方式
+                      </button>
+                      <button
+                        @click.stop="toggleShortcutMenu(env.id)"
+                        class="row-split__toggle row-split__toggle--shortcut"
+                        :class="{ 'row-split__toggle--open': activeMenuKey === `shortcut:${env.id}` }"
+                        title="更多快捷方式选项"
+                        aria-label="更多快捷方式选项"
+                      >
+                        <span class="row-split__caret"></span>
+                      </button>
+                      <div v-if="activeMenuKey === `shortcut:${env.id}`" class="row-menu">
+                        <button
+                          @click.stop="createDesktopShortcut(env.id, 'standard')"
+                          class="row-menu__item"
+                        >
+                          创建普通启动快捷方式
+                        </button>
+                        <button
+                          @click.stop="createDesktopShortcut(env.id, 'cdp')"
+                          class="row-menu__item row-menu__item--debug"
+                        >
+                          创建调试启动快捷方式
+                        </button>
+                      </div>
+                    </div>
                     <button @click.stop="editEnv(env)"
                       class="row-action-btn row-action-btn--info" title="编辑">编辑</button>
                     <button @click.stop="openCookieManager(env)"
@@ -183,7 +243,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useStore } from 'vuex'
 import type { Environment } from '@/types'
 import GroupSidebar from '@/components/layout/GroupSidebar.vue'
@@ -207,11 +267,25 @@ const showCookieManager = ref(false)
 const cookieEnv = ref<Environment | null>(null)
 const showDeleteConfirm = ref(false)
 const currentPage = ref(1)
+const activeMenuKey = ref<string | null>(null)
+
+function closeInlineMenu() {
+  activeMenuKey.value = null
+}
+
+function handleWindowClick() {
+  closeInlineMenu()
+}
 
 onMounted(() => {
   store.dispatch('settings/fetch')
   store.dispatch('environments/fetchAll')
   store.dispatch('groups/fetchAll')
+  window.addEventListener('click', handleWindowClick)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('click', handleWindowClick)
 })
 
 // --- Data ---
@@ -302,7 +376,12 @@ function toggleAll(): void {
 }
 
 async function launchEnv(id: string) {
+  closeInlineMenu()
   await store.dispatch('environments/launch', { envId: id, launchMode: 'standard' })
+}
+async function debugLaunchEnv(id: string) {
+  closeInlineMenu()
+  await store.dispatch('environments/launch', { envId: id, launchMode: 'cdp' })
 }
 async function closeEnv(id: string) {
   await store.dispatch('environments/close', id)
@@ -322,11 +401,22 @@ async function maximizeEnv(id: string) {
   }
 }
 function editEnv(env: any) {
+  closeInlineMenu()
   editingEnvironment.value = env
   showEditor.value = true
 }
+function toggleLaunchMenu(id: string) {
+  const key = `launch:${id}`
+  activeMenuKey.value = activeMenuKey.value === key ? null : key
+}
+
+function toggleShortcutMenu(id: string) {
+  const key = `shortcut:${id}`
+  activeMenuKey.value = activeMenuKey.value === key ? null : key
+}
 async function createDesktopShortcut(id: string, launchMode: 'standard' | 'cdp' = 'standard') {
   try {
+    closeInlineMenu()
     const shortcutPath = await window.electronAPI.invoke<string>('create-desktop-shortcut', {
       envId: id,
       launchMode,
@@ -361,6 +451,7 @@ async function saveEnvironment(data: Partial<Environment> | Array<Partial<Enviro
 }
 
 function openCookieManager(env: any) {
+  closeInlineMenu()
   cookieEnv.value = env
   showCookieManager.value = true
 }
@@ -526,38 +617,128 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
 }
 .row-action-btn {
   height: 28px;
-  padding: 0 10px;
-  border: 1px solid #dbe4ee;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #334155;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #2563eb;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .row-action-btn:hover {
-  border-color: #c2cfdd;
-  background: #f8fafc;
-  color: #0f172a;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.row-action-btn:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
 }
 .row-action-btn--neutral {
-  color: #334155;
+  color: #2563eb;
 }
 .row-action-btn--accent {
-  color: #334155;
+  color: #2563eb;
 }
 .row-action-btn--danger {
-  color: #334155;
-  background: #ffffff;
-  border-color: #dbe4ee;
+  color: #2563eb;
 }
 .row-action-btn--info {
-  color: #334155;
+  color: #2563eb;
 }
 .row-action-btn--warm {
-  color: #334155;
+  color: #2563eb;
+}
+.row-split {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  overflow: visible;
+}
+.row-split__main,
+.row-split__toggle {
+  height: 28px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.row-split__main {
+  padding: 0 4px;
+}
+.row-split__toggle {
+  width: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.row-split__main:hover,
+.row-split__toggle:hover,
+.row-split__toggle--open {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.row-split__main:focus-visible,
+.row-split__toggle:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
+}
+.row-split__main--start,
+.row-split__toggle--start {
+  color: #2563eb;
+}
+.row-split__main--start:hover,
+.row-split__toggle--start:hover,
+.row-split__toggle--open.row-split__toggle--start {
+  color: #1d4ed8;
+}
+.row-split__main--shortcut,
+.row-split__toggle--shortcut {
+  color: #2563eb;
+}
+.row-split__caret {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+}
+.row-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 188px;
+  padding: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 6px;
   background: #ffffff;
-  border-color: #dbe4ee;
+  z-index: 30;
+}
+.row-menu__item {
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.row-menu__item:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.row-menu__item--debug:hover {
+  background: #edf4ff;
+  color: #1d4ed8;
 }
 </style>
