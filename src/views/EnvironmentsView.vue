@@ -28,22 +28,40 @@
       <!-- P1: 表格操作栏 -->
       <div class="px-4 py-3 bg-white border-b border-slate-200 flex items-center gap-3 shrink-0">
         <div class="action-group">
-          <button
-            @click="batchLaunch"
-            :disabled="!canLaunchSelected"
-            class="action-btn action-btn-start"
-            :title="canLaunchSelected ? `启动 ${selectedStoppedCount} 个已停止环境` : '请选择已停止环境'"
-          >
-            启动
-          </button>
-          <button
-            @click="batchDebugLaunch"
-            :disabled="!canLaunchSelected"
-            class="action-btn action-btn-debug"
-            :title="canLaunchSelected ? `调试启动 ${selectedStoppedCount} 个已停止环境` : '请选择已停止环境'"
-          >
-            调试启动
-          </button>
+          <div class="toolbar-split" @click.stop>
+            <button
+              @click="batchLaunch"
+              :disabled="!canLaunchSelected"
+              class="action-btn action-btn-start"
+              :title="canLaunchSelected ? `启动 ${selectedStoppedCount} 个已停止环境` : '请选择已停止环境'"
+            >
+              启动
+            </button>
+            <button
+              @click="toggleToolbarLaunchMenu"
+              :disabled="!canLaunchSelected"
+              class="toolbar-split__toggle toolbar-split__toggle--start"
+              :class="{ 'toolbar-split__toggle--open': activeMenuKey === 'toolbar-launch' }"
+              title="更多启动方式"
+              aria-label="更多启动方式"
+            >
+              <span class="toolbar-split__caret"></span>
+            </button>
+            <div v-if="activeMenuKey === 'toolbar-launch'" class="row-menu row-menu--compact">
+              <button
+                @click="batchLaunch"
+                class="row-menu__item"
+              >
+                普通启动
+              </button>
+              <button
+                @click="batchDebugLaunch"
+                class="row-menu__item row-menu__item--debug"
+              >
+                调试启动
+              </button>
+            </div>
+          </div>
           <button
             @click="batchClose"
             :disabled="!canStopSelected"
@@ -60,6 +78,41 @@
           >
             删除
           </button>
+        </div>
+        <div class="flex-1"></div>
+        <div class="toolbar-split" @click.stop>
+          <button
+            @click="batchCreateDesktopShortcuts('standard')"
+            :disabled="!canCreateShortcutSelected"
+            class="action-btn action-btn-shortcut"
+            :title="canCreateShortcutSelected ? `为 ${selectionCount} 个已选环境创建普通启动快捷方式` : '请选择环境'"
+          >
+            创建桌面快捷方式
+          </button>
+          <button
+            @click="toggleToolbarShortcutMenu"
+            :disabled="!canCreateShortcutSelected"
+            class="toolbar-split__toggle"
+            :class="{ 'toolbar-split__toggle--open': activeMenuKey === 'toolbar-shortcut' }"
+            title="更多快捷方式选项"
+            aria-label="更多快捷方式选项"
+          >
+            <span class="toolbar-split__caret"></span>
+          </button>
+          <div v-if="activeMenuKey === 'toolbar-shortcut'" class="row-menu">
+            <button
+              @click="batchCreateDesktopShortcuts('standard')"
+              class="row-menu__item"
+            >
+              创建普通启动快捷方式
+            </button>
+            <button
+              @click="batchCreateDesktopShortcuts('cdp')"
+              class="row-menu__item row-menu__item--debug"
+            >
+              创建调试启动快捷方式
+            </button>
+          </div>
         </div>
       </div>
 
@@ -128,7 +181,7 @@
                       >
                         <span class="row-split__caret"></span>
                       </button>
-                      <div v-if="activeMenuKey === `launch:${env.id}`" class="row-menu">
+                      <div v-if="activeMenuKey === `launch:${env.id}`" class="row-menu row-menu--compact">
                         <button
                           @click.stop="launchEnv(env.id)"
                           class="row-menu__item"
@@ -161,20 +214,20 @@
                         <span class="row-split__caret"></span>
                       </button>
                       <div v-if="activeMenuKey === `shortcut:${env.id}`" class="row-menu">
-                        <button
-                          @click.stop="createDesktopShortcut(env.id, 'standard')"
-                          class="row-menu__item"
-                        >
-                          创建普通启动快捷方式
-                        </button>
-                        <button
-                          @click.stop="createDesktopShortcut(env.id, 'cdp')"
-                          class="row-menu__item row-menu__item--debug"
-                        >
-                          创建调试启动快捷方式
-                        </button>
-                      </div>
+                      <button
+                        @click.stop="createDesktopShortcut(env.id, 'standard')"
+                        class="row-menu__item"
+                      >
+                        创建普通启动快捷方式
+                      </button>
+                      <button
+                        @click.stop="createDesktopShortcut(env.id, 'cdp')"
+                        class="row-menu__item row-menu__item--debug"
+                      >
+                        创建调试启动快捷方式
+                      </button>
                     </div>
+                  </div>
                     <button @click.stop="editEnv(env)"
                       class="row-action-btn row-action-btn--info" title="编辑">编辑</button>
                     <button @click.stop="openCookieManager(env)"
@@ -312,6 +365,7 @@ const selectedStopped = computed(() =>
 )
 const selectedRunningCount = computed(() => selectedRunning.value.length)
 const selectedStoppedCount = computed(() => selectedStopped.value.length)
+const canCreateShortcutSelected = computed(() => selectionCount.value > 0)
 const canLaunchSelected = computed(() => selectedStoppedCount.value > 0)
 const canStopSelected = computed(() => selectedRunningCount.value > 0)
 const canDeleteSelected = computed(() => selectionCount.value > 0)
@@ -414,6 +468,17 @@ function toggleShortcutMenu(id: string) {
   const key = `shortcut:${id}`
   activeMenuKey.value = activeMenuKey.value === key ? null : key
 }
+
+function toggleToolbarShortcutMenu() {
+  const key = 'toolbar-shortcut'
+  activeMenuKey.value = activeMenuKey.value === key ? null : key
+}
+
+function toggleToolbarLaunchMenu() {
+  const key = 'toolbar-launch'
+  activeMenuKey.value = activeMenuKey.value === key ? null : key
+}
+
 async function createDesktopShortcut(id: string, launchMode: 'standard' | 'cdp' = 'standard') {
   try {
     closeInlineMenu()
@@ -425,6 +490,25 @@ async function createDesktopShortcut(id: string, launchMode: 'standard' | 'cdp' 
   } catch (error) {
     console.error('[createDesktopShortcut] error:', error)
     toast.error(error instanceof Error ? error.message : '创建桌面快捷方式失败')
+  }
+}
+
+async function batchCreateDesktopShortcuts(launchMode: 'standard' | 'cdp' = 'standard') {
+  const ids = [...selectedIds.value]
+  if (ids.length === 0) return
+
+  try {
+    closeInlineMenu()
+    for (const id of ids) {
+      await window.electronAPI.invoke<string>('create-desktop-shortcut', {
+        envId: id,
+        launchMode,
+      })
+    }
+    toast.success(`已为 ${ids.length} 个环境创建桌面快捷方式`)
+  } catch (error) {
+    console.error('[batchCreateDesktopShortcuts] error:', error)
+    toast.error(error instanceof Error ? error.message : '批量创建桌面快捷方式失败')
   }
 }
 function openBatchCreate() {
@@ -600,7 +684,6 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
   filter: grayscale(0.35);
 }
 .action-btn-start,
-.action-btn-debug,
 .action-btn-stop,
 .action-btn-delete {
   background: #ffffff;
@@ -608,12 +691,54 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
   color: #374151;
 }
 .action-btn-start:hover:not(:disabled),
-.action-btn-debug:hover:not(:disabled),
 .action-btn-stop:hover:not(:disabled),
 .action-btn-delete:hover:not(:disabled) {
   background: #f8fafc;
   border-color: #cbd5e1;
   color: #1f2937;
+}
+.action-btn-start {
+  border-radius: 6px 0 0 6px;
+}
+.action-btn-shortcut {
+  border-radius: 6px 0 0 6px;
+}
+.toolbar-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+.toolbar-split__toggle {
+  width: 28px;
+  border: 1px solid #d1d5db;
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  background: #ffffff;
+  color: #374151;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease, filter 120ms ease;
+}
+.toolbar-split__toggle:hover:not(:disabled),
+.toolbar-split__toggle--open {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1f2937;
+}
+.toolbar-split__toggle--start {
+  border-color: #d1d5db;
+}
+.toolbar-split__toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  filter: grayscale(0.35);
+}
+.toolbar-split__caret {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
 }
 .row-action-btn {
   height: 28px;
@@ -621,34 +746,34 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #2563eb;
+  color: #334155;
   font-size: 12px;
   font-weight: 400;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .row-action-btn:hover {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #eef2f7;
+  color: #0f172a;
 }
 .row-action-btn:focus-visible {
   outline: 2px solid #93c5fd;
   outline-offset: 1px;
 }
 .row-action-btn--neutral {
-  color: #2563eb;
+  color: #334155;
 }
 .row-action-btn--accent {
-  color: #2563eb;
+  color: #334155;
 }
 .row-action-btn--danger {
-  color: #2563eb;
+  color: #334155;
 }
 .row-action-btn--info {
-  color: #2563eb;
+  color: #334155;
 }
 .row-action-btn--warm {
-  color: #2563eb;
+  color: #334155;
 }
 .row-split {
   position: relative;
@@ -663,7 +788,7 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #2563eb;
+  color: #334155;
   font-size: 12px;
   font-weight: 400;
   cursor: pointer;
@@ -681,8 +806,8 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
 .row-split__main:hover,
 .row-split__toggle:hover,
 .row-split__toggle--open {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #eef2f7;
+  color: #0f172a;
 }
 .row-split__main:focus-visible,
 .row-split__toggle:focus-visible {
@@ -691,16 +816,16 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
 }
 .row-split__main--start,
 .row-split__toggle--start {
-  color: #2563eb;
+  color: #334155;
 }
 .row-split__main--start:hover,
 .row-split__toggle--start:hover,
 .row-split__toggle--open.row-split__toggle--start {
-  color: #1d4ed8;
+  color: #0f172a;
 }
 .row-split__main--shortcut,
 .row-split__toggle--shortcut {
-  color: #2563eb;
+  color: #334155;
 }
 .row-split__caret {
   width: 0;
@@ -714,19 +839,23 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
   top: calc(100% + 6px);
   right: 0;
   min-width: 188px;
-  padding: 6px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 6px;
+  padding: 4px;
+  border: 1px solid #dbeafe;
+  border-radius: 4px;
   background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   z-index: 30;
+}
+.row-menu--compact {
+  min-width: 92px;
 }
 .row-menu__item {
   width: 100%;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
-  color: #2563eb;
+  color: #374151;
   font-size: 12px;
   font-weight: 400;
   text-align: left;
@@ -734,11 +863,11 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
   transition: background-color 120ms ease, color 120ms ease;
 }
 .row-menu__item:hover {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #f8fafc;
+  color: #1f2937;
 }
 .row-menu__item--debug:hover {
-  background: #edf4ff;
-  color: #1d4ed8;
+  background: #f8fafc;
+  color: #1f2937;
 }
 </style>

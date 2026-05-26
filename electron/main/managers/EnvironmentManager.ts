@@ -180,7 +180,7 @@ class EnvironmentManager {
 
     const desktopDir = app.getPath('desktop')
     const shortcutName = this.sanitizeShortcutFileName(
-      launchMode === 'cdp' ? `${env.name} 调试启动.lnk` : `${env.name}.lnk`
+      launchMode === 'cdp' ? `${env.name} 调试启动 ${env.cdpPort}.lnk` : `${env.name}.lnk`
     )
     const shortcutPath = join(desktopDir, shortcutName)
     this.writeWindowsShortcut({
