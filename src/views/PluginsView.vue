@@ -8,7 +8,7 @@
       </div>
       <router-link
         to="/plugins/store"
-        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+        class="plugin-primary-btn inline-flex items-center gap-1.5"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -33,7 +33,7 @@
         <p class="text-xs text-slate-500 mb-4">点击右上角「插件商店」浏览并安装 Chrome 扩展。</p>
         <router-link
           to="/plugins/store"
-          class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+          class="plugin-primary-btn inline-flex items-center"
         >
           前往插件商店
         </router-link>
@@ -87,7 +87,7 @@
             <!-- 操作按钮 -->
             <div class="flex gap-2 pt-1">
               <button
-                class="flex-1 text-xs py-1.5 px-2 rounded-lg border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 transition-colors"
+                class="plugin-tool-btn flex-1"
                 :disabled="plugin.missingEnvCount === 0"
                 :class="plugin.missingEnvCount === 0 ? 'opacity-40 cursor-not-allowed' : ''"
                 @click="reinstallMissing(plugin.id)"
@@ -95,7 +95,7 @@
                 补装缺失
               </button>
               <button
-                class="flex-1 text-xs py-1.5 px-2 rounded-lg border border-red-200 text-red-600 bg-white hover:bg-red-50 transition-colors"
+                class="plugin-tool-btn-danger flex-1"
                 @click="confirmUninstall(plugin)"
               >
                 卸载
@@ -130,13 +130,13 @@
           </div>
           <div class="flex gap-2 justify-end">
             <button
-              class="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+              class="plugin-dialog-btn"
               @click="uninstallTarget = null"
             >
               取消
             </button>
             <button
-              class="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
+              class="plugin-dialog-btn-danger"
               @click="doUninstall"
             >
               确认卸载
@@ -189,6 +189,77 @@ async function reinstallMissing(pluginId: string) {
 </script>
 
 <style scoped>
+.plugin-primary-btn {
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  background: #3b82f6;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.plugin-primary-btn:hover {
+  background: #2563eb;
+}
+.plugin-tool-btn {
+  padding: 5px 10px;
+  font-size: 12px;
+  background: #ffffff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.plugin-tool-btn:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #cbd5e1;
+}
+.plugin-tool-btn-danger {
+  padding: 5px 10px;
+  font-size: 12px;
+  background: #ffffff;
+  color: #ef4444;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.plugin-tool-btn-danger:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+.plugin-dialog-btn {
+  padding: 7px 16px;
+  font-size: 13px;
+  background: #ffffff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.plugin-dialog-btn:hover {
+  background: #f9fafb;
+  border-color: #cbd5e1;
+  color: #1f2937;
+}
+.plugin-dialog-btn-danger {
+  padding: 7px 16px;
+  font-size: 13px;
+  background: #ef4444;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.plugin-dialog-btn-danger:hover {
+  background: #dc2626;
+}
+
 .metric-chip {
   display: flex;
   flex-direction: column;

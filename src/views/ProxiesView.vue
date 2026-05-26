@@ -85,13 +85,13 @@
           <th class="h-10 w-10 px-3 text-center">
             <input type="checkbox" :checked="allSelected" :indeterminate="isIndeterminate" @change="toggleAll" class="cursor-pointer" />
           </th>
-          <th class="h-10 w-14 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500">编号</th>
-          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500">名称</th>
-          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500">类型</th>
-          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500">地址</th>
-          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500">状态</th>
-          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500">使用数</th>
-          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500">操作</th>
+          <th class="h-10 w-14 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">编号</th>
+          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">名称</th>
+          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">类型</th>
+          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">地址</th>
+          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">状态</th>
+          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">使用数</th>
+          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">操作</th>
         </tr>
       </thead>
       <tbody>

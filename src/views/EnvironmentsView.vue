@@ -4,30 +4,34 @@
     <GroupSidebar />
 
     <!-- 主区域 -->
-    <div class="flex-1 flex flex-col min-w-0">
-      <!-- P0: 工具栏 -->
-      <div class="p-4 border-b border-slate-200 flex items-center gap-3 shrink-0">
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="搜索环境名称或标签..."
-          class="flex-1 max-w-xs h-9 px-3 text-sm rounded-lg border-slate-300 bg-white focus:border-blue-500 focus:ring-blue-500/20"
-        />
-        <select v-model="statusFilter" class="h-9 px-2 text-sm rounded-lg border-slate-300 bg-white">
-          <option value="">全部状态</option>
-          <option value="running">运行中</option>
-          <option value="stopped">已停止</option>
-        </select>
+    <div class="flex-1 p-6 overflow-y-auto min-w-0">
+      <!-- 标题栏 -->
+      <div class="flex items-center gap-3 mb-4">
+        <h2 class="text-base font-semibold text-slate-800">环境管理</h2>
+        <span class="text-xs text-slate-400">{{ filteredEnvironments.length }} 个环境</span>
         <div class="flex-1"></div>
-        <button @click="openCreateDialog" class="btn-outline text-xs">新建环境</button>
+        <button @click="openCreateDialog" class="btn-primary text-xs">新建环境</button>
         <button @click="openBatchCreate" class="btn-outline text-xs">批量创建</button>
         <button @click="showBookmarkImport = true" class="btn-outline text-xs">导入收藏夹</button>
         <button @click="showImportExport = true" class="btn-outline text-xs">导入/导出</button>
       </div>
 
-      <!-- P1: 表格操作栏 -->
-      <div class="px-4 py-3 bg-white border-b border-slate-200 flex items-center gap-3 shrink-0">
-        <div class="action-group">
+      <!-- 筛选和批量操作栏 -->
+      <div class="flex items-center gap-3 mb-3">
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="搜索环境名称或标签..."
+          class="env-filter-input"
+        />
+        <select v-model="statusFilter" class="env-filter-select">
+          <option value="">全部状态</option>
+          <option value="running">运行中</option>
+          <option value="stopped">已停止</option>
+        </select>
+        <div class="flex-1"></div>
+        <span v-if="selectionCount > 0" class="text-xs text-slate-500">{{ selectionSummary }}</span>
+        <template v-if="selectionCount > 0">
           <div class="toolbar-split" @click.stop>
             <button
               @click="batchLaunch"
@@ -78,83 +82,82 @@
           >
             删除
           </button>
-        </div>
-        <div class="flex-1"></div>
-        <div class="toolbar-split" @click.stop>
-          <button
-            @click="batchCreateDesktopShortcuts('standard')"
-            :disabled="!canCreateShortcutSelected"
-            class="action-btn action-btn-shortcut"
-            :title="canCreateShortcutSelected ? `为 ${selectionCount} 个已选环境创建普通启动快捷方式` : '请选择环境'"
-          >
-            创建桌面快捷方式
-          </button>
-          <button
-            @click="toggleToolbarShortcutMenu"
-            :disabled="!canCreateShortcutSelected"
-            class="toolbar-split__toggle"
-            :class="{ 'toolbar-split__toggle--open': activeMenuKey === 'toolbar-shortcut' }"
-            title="更多快捷方式选项"
-            aria-label="更多快捷方式选项"
-          >
-            <span class="toolbar-split__caret"></span>
-          </button>
-          <div v-if="activeMenuKey === 'toolbar-shortcut'" class="row-menu">
+          <div class="toolbar-split" @click.stop>
             <button
               @click="batchCreateDesktopShortcuts('standard')"
-              class="row-menu__item"
+              :disabled="!canCreateShortcutSelected"
+              class="action-btn action-btn-shortcut"
+              :title="canCreateShortcutSelected ? `为 ${selectionCount} 个已选环境创建普通启动快捷方式` : '请选择环境'"
             >
-              创建普通启动快捷方式
+              创建桌面快捷方式
             </button>
             <button
-              @click="batchCreateDesktopShortcuts('cdp')"
-              class="row-menu__item row-menu__item--debug"
+              @click="toggleToolbarShortcutMenu"
+              :disabled="!canCreateShortcutSelected"
+              class="toolbar-split__toggle"
+              :class="{ 'toolbar-split__toggle--open': activeMenuKey === 'toolbar-shortcut' }"
+              title="更多快捷方式选项"
+              aria-label="更多快捷方式选项"
             >
-              创建调试启动快捷方式
+              <span class="toolbar-split__caret"></span>
             </button>
+            <div v-if="activeMenuKey === 'toolbar-shortcut'" class="row-menu">
+              <button
+                @click="batchCreateDesktopShortcuts('standard')"
+                class="row-menu__item"
+              >
+                创建普通启动快捷方式
+              </button>
+              <button
+                @click="batchCreateDesktopShortcuts('cdp')"
+                class="row-menu__item row-menu__item--debug"
+              >
+                创建调试启动快捷方式
+              </button>
+            </div>
           </div>
-        </div>
+        </template>
       </div>
 
       <!-- P2: 表格 -->
-      <div class="flex-1 overflow-auto p-4">
-        <table v-if="filteredEnvironments.length > 0" class="w-full text-sm" role="grid">
+      <div>
+        <table v-if="filteredEnvironments.length > 0" class="w-full text-sm bg-white rounded-lg border border-slate-200" role="grid">
           <thead>
-            <tr class="sticky top-0 z-10 bg-slate-50">
-              <th class="h-10 w-10 text-center pl-3">
+            <tr class="bg-slate-50 border-b border-slate-200">
+              <th class="h-10 w-10 text-center px-3">
                 <input type="checkbox" :checked="allSelected" @change="toggleAll" />
               </th>
-              <th class="h-10 w-14 text-center px-3 font-medium text-[12px] uppercase tracking-wide text-slate-500">编号</th>
-              <th class="h-10 text-center px-3 font-medium text-[12px] uppercase tracking-wide text-slate-500">颜色</th>
-              <th class="h-10 text-center px-3 font-medium text-[12px] uppercase tracking-wide text-slate-500">名称</th>
-              <th class="h-10 text-center px-3 font-medium text-[12px] uppercase tracking-wide text-slate-500">状态</th>
-              <th class="h-10 text-center px-3 font-medium text-[12px] uppercase tracking-wide text-slate-500">代理</th>
-              <th class="h-10 text-center px-3 font-medium text-[12px] uppercase tracking-wide text-slate-500">最后使用</th>
-              <th class="h-10 text-center px-3 font-medium text-[12px] uppercase tracking-wide text-slate-500">操作</th>
+              <th class="h-10 w-14 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">编号</th>
+              <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">颜色</th>
+              <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">名称</th>
+              <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">状态</th>
+              <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">代理</th>
+              <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">最后使用</th>
+              <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr
               v-for="(env, index) in paginatedEnvironments"
               :key="env.id"
-              class="border-b border-slate-100 hover:bg-slate-50 transition-colors duration-150"
-              :class="{ 'bg-blue-50 border-l-2 border-l-blue-500': isSelected(env.id) }"
+              class="border-b border-slate-100 hover:bg-slate-50 transition-colors"
+              :class="{ 'bg-blue-50/60': isSelected(env.id) }"
             >
-              <td class="py-2.5 pl-3 text-center"><input type="checkbox" :checked="isSelected(env.id)" @change="toggleSelection(env.id)" /></td>
-              <td class="py-2.5 px-3 text-center text-xs font-medium text-slate-500">{{ rowNumber(index) }}</td>
-              <td class="py-2.5 px-3 text-center">
+              <td class="py-2.5 px-3 text-center"><input type="checkbox" :checked="isSelected(env.id)" @change="toggleSelection(env.id)" /></td>
+              <td class="py-2.5 px-4 text-center text-xs font-medium text-slate-500">{{ rowNumber(index) }}</td>
+              <td class="py-2.5 px-4 text-center">
                 <span class="inline-block w-4 h-4 rounded-full" :style="{ backgroundColor: env.color }"></span>
               </td>
-              <td class="py-2.5 px-3 font-medium text-slate-800 text-center">{{ env.name }}</td>
-              <td class="py-2.5 px-3 text-center">
+              <td class="py-2.5 px-4 font-medium text-slate-700 text-center">{{ env.name }}</td>
+              <td class="py-2.5 px-4 text-center">
                 <span class="text-[11px] px-2 py-0.5 rounded-full font-medium"
                   :class="statusBadgeClass(env.status)"
                 >{{ statusLabel(env.status) }}</span>
               </td>
-              <td class="py-2.5 px-3 text-slate-500 text-xs text-center">{{ proxyLabel(env) }}</td>
-              <td class="py-2.5 px-3 text-slate-400 text-xs text-center">{{ formatTime(env.lastUsed) }}</td>
-              <td class="py-2.5 px-3 text-center">
-                <div class="flex items-center justify-center gap-2">
+              <td class="py-2.5 px-4 text-slate-500 text-xs text-center">{{ proxyLabel(env) }}</td>
+              <td class="py-2.5 px-4 text-slate-400 text-xs text-center">{{ formatTime(env.lastUsed) }}</td>
+              <td class="py-2.5 px-4 text-center">
+                <div class="flex items-center justify-center gap-1">
                   <template v-if="env.status === 'running'">
                     <button @click.stop="minimizeEnv(env.id)"
                       class="row-action-btn row-action-btn--neutral" title="最小化">最小化</button>
@@ -250,6 +253,7 @@
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :total="filteredEnvironments.length"
+        class="mt-3 rounded-lg border border-slate-200"
       />
     </div>
 
@@ -640,12 +644,31 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
 </script>
 
 <style scoped>
-.btn-primary { padding: 6px 14px; font-size: 13px; font-weight: 500; background-color: #3b82f6; color: white; border-radius: 6px; border: 1px solid #2563eb; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
-.btn-primary:hover { background-color: #2563eb; border-color: #1d4ed8; }
+.env-filter-input,
+.env-filter-select {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  outline: none;
+  font-size: 13px;
+  background: white;
+}
+.env-filter-input {
+  width: 320px;
+  max-width: 32vw;
+}
+.env-filter-select {
+  width: 120px;
+}
+.env-filter-input:focus,
+.env-filter-select:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,.15); }
+.btn-primary { padding: 7px 16px; font-size: 13px; font-weight: 500; background-color: #3b82f6; color: white; border-radius: 6px; border: 0; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
+.btn-primary:hover { background-color: #2563eb; }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-outline { padding: 6px 14px; font-size: 13px; font-weight: 500; background-color: white; color: #374151; border-radius: 6px; border: 1px solid #d1d5db; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; }
-.btn-outline:hover { background-color: #f8fafc; border-color: #cbd5e1; color: #1f2937; }
-.btn-outline-danger { padding: 6px 14px; font-size: 13px; font-weight: 500; background-color: white; color: #ef4444; border-radius: 6px; border: 1px solid #fecaca; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
+.btn-outline { padding: 7px 16px; font-size: 13px; font-weight: 500; background-color: white; color: #374151; border-radius: 6px; border: 1px solid #d1d5db; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; }
+.btn-outline:hover { background-color: #f9fafb; border-color: #cbd5e1; color: #1f2937; }
+.btn-outline-danger { padding: 7px 16px; font-size: 13px; font-weight: 500; background-color: white; color: #ef4444; border-radius: 6px; border: 1px solid #fecaca; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
 .btn-outline-danger:hover { background-color: #fef2f2; border-color: #fca5a5; }
 .action-group {
   display: inline-flex;
