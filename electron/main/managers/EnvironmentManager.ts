@@ -134,11 +134,6 @@ class EnvironmentManager {
     launchMode: 'cdp' | 'standard' = 'standard'
   ) {
     const proxy = env.proxy ? `${env.proxy.type}://${env.proxy.host}:${env.proxy.port}` : undefined
-    const proxyAuth =
-      env.proxy?.username && env.proxy.password
-        ? `${env.proxy.username}:${env.proxy.password}`
-        : undefined
-
     const pluginLaunchContext = pluginInstallService.getLaunchContextForEnvironment(env.id, env.userDataDir)
     const geoLocale = env.fingerprint.followIpGeo
       ? await this.resolveGeoLocaleForLaunch(env)
@@ -157,7 +152,6 @@ class EnvironmentManager {
         proxy,
         managedExtensionDirs: pluginLaunchContext.extensionDirs,
         launchMode,
-        ...(proxyAuth ? { proxyAuth } : {}),
       },
     }
   }
@@ -299,7 +293,7 @@ class EnvironmentManager {
     const settings = storageService.getSettings()
     return geoLocaleService.resolveForLaunch(env.proxy, {
       timezone: settings.defaultTimezone || env.fingerprint.timezone || 'Asia/Shanghai',
-      lang: settings.defaultLang || env.fingerprint.lang || 'en-US',
+      lang: settings.defaultLang || env.fingerprint.lang || 'zh-CN',
     })
   }
 

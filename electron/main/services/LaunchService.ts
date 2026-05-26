@@ -176,11 +176,6 @@ class LaunchService {
       args.push(`--disable-non-proxied-udp`)
     }
 
-    // 代理认证（P1#8：支持 --proxy-auth 参数）
-    if ((options as any).proxyAuth) {
-      args.push(`--proxy-auth=${(options as any).proxyAuth}`)
-    }
-    
     // WebRTC
     args.push(`--disable-webrtc-foreground-indicator`)
     

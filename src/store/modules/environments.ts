@@ -7,7 +7,7 @@ const defaultFingerprint = (): FingerprintConfig => ({
   platform: 'windows',
   platformVersion: '10.0.19045',
   brand: 'Chrome',
-  brandVersion: '120.0.6099.71',
+  brandVersion: '144.0.7559.132',
   hardwareConcurrency: 4,
   timezone: 'Asia/Shanghai',
   lang: 'zh-CN',
@@ -24,7 +24,7 @@ function sanitizeFingerprint(input?: Partial<FingerprintConfig>): FingerprintCon
     brandVersion: fp.brandVersion || '',
     hardwareConcurrency: fp.hardwareConcurrency || 4,
     timezone: fp.timezone || 'Asia/Shanghai',
-    lang: fp.lang || 'en-US',
+    lang: fp.lang || 'zh-CN',
     followIpGeo: !!fp.followIpGeo,
     disabledSpoofing: Array.isArray(fp.disabledSpoofing)
       ? fp.disabledSpoofing.filter((item): item is string => typeof item === 'string')

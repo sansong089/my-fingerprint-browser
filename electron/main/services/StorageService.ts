@@ -121,7 +121,7 @@ const defaultSettings: Settings = {
   browserPath: '',
   defaultPlatform: 'windows',
   defaultTimezone: 'Asia/Shanghai',
-  defaultLang: 'en-US',
+  defaultLang: 'zh-CN',
   autoStart: false,
   minimizeToTray: false,
   syncDelay: 50,

@@ -40,7 +40,7 @@
             
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">默认语言</label>
-              <input v-model="localSettings.defaultLang" type="text" class="input" placeholder="en-US">
+              <input v-model="localSettings.defaultLang" type="text" class="input" placeholder="zh-CN">
             </div>
           </div>
         </div>
@@ -109,7 +109,7 @@ const localSettings = ref<Settings>({
   browserPath: '',
   defaultPlatform: 'windows',
   defaultTimezone: 'Asia/Shanghai',
-  defaultLang: 'en-US',
+  defaultLang: 'zh-CN',
   autoStart: false,
   minimizeToTray: false,
   syncDelay: 50,

@@ -496,7 +496,7 @@ d:\00-work\mywork\my-fingerprint-browser\
   browserPath: '',
   defaultPlatform: 'windows',
   defaultTimezone: 'Asia/Shanghai',
-  defaultLang: 'en-US',
+  defaultLang: 'zh-CN',
   autoStart: false,
   minimizeToTray: false,
   syncDelay: 50
@@ -577,8 +577,7 @@ interface Environment {
 | 安全 | `--remote-debugging-address=127.0.0.1` | 仅本地监听 |
 | 行为 | `--no-first-run`, `--no-default-browser-check` | 跳过首次向导 |
 | 指纹 | `--fingerprint=<seed>` 等 | 指纹种子驱动 |
-| 代理 | `--proxy-server=<url>` | HTTP/SOCKS5 代理 |
-| 代理认证 | `--proxy-auth=user:pass` | 代理认证信息 |
+| 代理 | `--proxy-server=<url>` | 上游 fingerprint-chromium 官方支持的 HTTP/SOCKS 代理参数 |
 | 反检测 | `--disable-webrtc-foreground-indicator`, `--disable-detection-forms` | 自动化规避 |
 
 **进程事件监听：**
@@ -1198,10 +1197,10 @@ interface Proxy {
 | 超时时间 | 5000ms |
 | 检测结果 | `status: 'available', latency: ms` 或 `status: 'unavailable', latency: -1` |
 
-**代理认证支持：**
+**代理参数支持：**
 - LaunchService 启动 Chrome 时传入 `--proxy-server=<type>://<host>:<port>`
-- 如有认证信息，额外追加 `--proxy-auth=<username>:<password>`
-- 密码当前明文存储于 electron-store JSON（v2.0 阶段），v2.1 计划迁移至 Windows Credential Manager 或加密存储
+- 上游 fingerprint-chromium 当前官方参数表说明 `--proxy-server` 不支持密码认证；应用不再追加非官方 `--proxy-auth`
+- 代理账号密码仍可保存在代理池中用于连通性检测等应用侧能力，不作为 Chromium 启动参数传入
 
 **代理池管理功能：**
 - CRUD 操作（创建/编辑/删除代理条目）

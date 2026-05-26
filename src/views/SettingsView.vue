@@ -28,8 +28,8 @@
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">默认语言</label>
         <select v-model="settings.defaultLang" class="input w-full">
-          <option value="en-US">English (US)</option>
           <option value="zh-CN">简体中文</option>
+          <option value="en-US">English (US)</option>
           <option value="ja-JP">日本語</option>
           <option value="ko-KR">한국어</option>
         </select>
@@ -73,7 +73,7 @@ const settings = reactive({
   browserPath: '',
   defaultPlatform: 'windows' as string,
   defaultTimezone: 'Asia/Shanghai',
-  defaultLang: 'en-US',
+  defaultLang: 'zh-CN',
   autoStart: false,
   minimizeToTray: false,
   syncDelay: 50,
