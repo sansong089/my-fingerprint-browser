@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen, type Point, type Rectangle } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen, type OpenDialogOptions, type Point, type Rectangle } from 'electron'
 import { join } from 'path'
 import { appendFileSync, mkdirSync } from 'fs'
 
@@ -18,6 +18,7 @@ import { pluginCatalogService } from './services/PluginCatalogService'
 import { pluginInstallService } from './services/PluginInstallService'
 import { pluginStoreWindowService } from './services/PluginStoreWindowService'
 import { localApiService } from './services/LocalApiService'
+import { bookmarkImportService } from './services/BookmarkImportService'
 
 // Global references
 let mainWindow: BrowserWindow | null = null
@@ -1497,6 +1498,43 @@ ipcMain.handle('import-environments', async (_, params) => {
   activityLogService.log({ envId: 'system', action: 'import', details: `导入 ${created} 个环境 (${format || 'json'})` })
   return { imported: created, total: importedEnvs.length }
 })
+
+// ==================== 收藏夹导入 ====================
+ipcMain.handle('bookmarks-detect-sources', () => {
+  return bookmarkImportService.detectSources()
+})
+
+ipcMain.handle('bookmarks-select-file', async (_, params) => {
+  const sourceType = params?.sourceType === 'edge' ? 'edge' : 'chrome'
+  const dialogOptions: OpenDialogOptions = {
+    title: `选择 ${sourceType === 'edge' ? 'Edge' : 'Chrome'} Bookmarks 文件`,
+    properties: ['openFile'],
+    filters: [
+      { name: 'Chromium Bookmarks', extensions: ['json', '*'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  }
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, dialogOptions)
+    : await dialog.showOpenDialog(dialogOptions)
+
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
+})
+
+ipcMain.handle('bookmarks-preview-import', (_, params) => {
+  const sourceType = params?.sourceType === 'edge' ? 'edge' : 'chrome'
+  const sourcePath = typeof params?.sourcePath === 'string' ? params.sourcePath : ''
+  return bookmarkImportService.preview(sourceType, sourcePath)
+})
+
+ipcMain.handle('bookmarks-import', (_, params) => {
+  const sourceType = params?.sourceType === 'edge' ? 'edge' : 'chrome'
+  const sourcePath = typeof params?.sourcePath === 'string' ? params.sourcePath : ''
+  const envIds = Array.isArray(params?.envIds) ? params.envIds.map(String) : []
+  return bookmarkImportService.importToEnvironments({ sourceType, sourcePath, envIds })
+})
+
 // ==================== Activity Logs ====================
 ipcMain.handle('activity-logs', (_, params) => {
   const validation = validateIPC('activity-logs', params || {})

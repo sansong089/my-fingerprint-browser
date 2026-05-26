@@ -10,9 +10,72 @@ const defaultFingerprint = (): FingerprintConfig => ({
   brandVersion: '120.0.6099.71',
   hardwareConcurrency: 4,
   timezone: 'Asia/Shanghai',
-  lang: 'en-US',
+  lang: 'zh-CN',
   followIpGeo: false,
 })
+
+function sanitizeFingerprint(input?: Partial<FingerprintConfig>): FingerprintConfig {
+  const fp = input || {}
+  return {
+    seed: typeof fp.seed === 'number' ? fp.seed : Math.floor(Math.random() * 1000000),
+    platform: fp.platform || 'windows',
+    platformVersion: fp.platformVersion || '',
+    brand: fp.brand || 'Chrome',
+    brandVersion: fp.brandVersion || '',
+    hardwareConcurrency: fp.hardwareConcurrency || 4,
+    timezone: fp.timezone || 'Asia/Shanghai',
+    lang: fp.lang || 'en-US',
+    followIpGeo: !!fp.followIpGeo,
+    disabledSpoofing: Array.isArray(fp.disabledSpoofing)
+      ? fp.disabledSpoofing.filter((item): item is string => typeof item === 'string')
+      : [],
+  }
+}
+
+function sanitizeProxy(input?: Partial<ProxyConfig>): ProxyConfig | undefined {
+  if (!input?.host || !input.port) return undefined
+  return {
+    type: input.type || 'http',
+    host: input.host,
+    port: input.port,
+    username: input.username || '',
+    password: input.password || '',
+  }
+}
+
+function sanitizeEnvironmentPayload(input: Partial<Environment>): Partial<Environment> {
+  const payload: Partial<Environment> = {
+    ...('id' in input ? { id: input.id } : {}),
+    ...('name' in input ? { name: input.name || '' } : {}),
+    ...('desktopShortcuts' in input ? {
+      desktopShortcuts: {
+        ...(input.desktopShortcuts?.standard ? { standard: input.desktopShortcuts.standard } : {}),
+        ...(input.desktopShortcuts?.cdp ? { cdp: input.desktopShortcuts.cdp } : {}),
+      },
+    } : {}),
+    ...('userDataDir' in input ? { userDataDir: input.userDataDir || '' } : {}),
+    ...('createdAt' in input ? { createdAt: input.createdAt || '' } : {}),
+    ...('lastUsed' in input ? { lastUsed: input.lastUsed || '' } : {}),
+    ...('status' in input ? { status: input.status } : {}),
+    ...('url' in input ? { url: input.url } : {}),
+    ...('groupId' in input ? { groupId: input.groupId || undefined } : {}),
+    ...('templateId' in input ? { templateId: input.templateId || undefined } : {}),
+    ...('launchedAt' in input ? { launchedAt: input.launchedAt } : {}),
+    ...('cdpPort' in input ? { cdpPort: input.cdpPort ?? undefined } : {}),
+    ...('tags' in input ? { tags: Array.isArray(input.tags) ? [...input.tags] : [] } : {}),
+    ...('color' in input ? { color: input.color || getRandomEnvColor() } : {}),
+  }
+
+  if ('fingerprint' in input) {
+    payload.fingerprint = sanitizeFingerprint(input.fingerprint)
+  }
+
+  if ('proxy' in input) {
+    payload.proxy = sanitizeProxy(input.proxy)
+  }
+
+  return payload
+}
 
 export interface EnvironmentsState {
   list: Environment[]
@@ -105,32 +168,8 @@ export default {
 
     async create({ commit }, data: Partial<Environment>) {
       const envId = `env_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      const fp = data.fingerprint || defaultFingerprint()
-
-      // 清理指纹数据为可序列化格式
-      const cleanFingerprint: FingerprintConfig = {
-        seed: fp.seed,
-        platform: fp.platform,
-        platformVersion: fp.platformVersion || '',
-        brand: fp.brand || 'Chrome',
-        brandVersion: fp.brandVersion || '',
-        hardwareConcurrency: fp.hardwareConcurrency || 4,
-        timezone: fp.timezone || 'Asia/Shanghai',
-        lang: fp.lang || 'en-US',
-        followIpGeo: !!fp.followIpGeo,
-        disabledSpoofing: fp.disabledSpoofing || [],
-      }
-
-      let cleanProxy: ProxyConfig | undefined
-      if (data.proxy && data.proxy.host && data.proxy.port) {
-        cleanProxy = {
-          type: data.proxy.type,
-          host: data.proxy.host,
-          port: data.proxy.port,
-          username: data.proxy.username || '',
-          password: data.proxy.password || '',
-        }
-      }
+      const cleanFingerprint = sanitizeFingerprint(data.fingerprint || defaultFingerprint())
+      const cleanProxy = sanitizeProxy(data.proxy)
 
       const environmentData = {
         id: envId,
@@ -138,7 +177,7 @@ export default {
         fingerprint: cleanFingerprint,
         proxy: cleanProxy,
         userDataDir: `profiles/${envId}`,
-        // cdpPort 由主进程 EnvironmentManager 分配（P0#2）
+        cdpPort: data.cdpPort,
         tags: data.tags || [],
         color: data.color || getRandomEnvColor(),
         groupId: data.groupId,
@@ -152,8 +191,9 @@ export default {
     },
 
     async update({ commit }, environment: Environment) {
-      await window.electronAPI.invoke('update-environment', environment.id, environment)
-      commit('UPDATE', { ...environment, lastUsed: new Date().toISOString() })
+      const cleanEnvironment = sanitizeEnvironmentPayload(environment) as Environment
+      await window.electronAPI.invoke('update-environment', cleanEnvironment.id, cleanEnvironment)
+      commit('UPDATE', { ...cleanEnvironment, lastUsed: new Date().toISOString() })
     },
 
     async delete({ commit }, id: string) {
@@ -163,11 +203,13 @@ export default {
       commit('ui/DESELECT_ENV', id, { root: true })
     },
 
-    async launch({ commit, dispatch }, envId: string) {
+    async launch({ commit, dispatch }, payload: string | { envId: string; launchMode?: 'standard' | 'cdp' }) {
+      const envId = typeof payload === 'string' ? payload : payload.envId
+      const launchMode = typeof payload === 'string' ? 'standard' : payload.launchMode || 'standard'
       commit('SET_LOADING_KEY', { key: `launch-${envId}`, value: true })
 
       try {
-        const result = await window.electronAPI.invoke<boolean>('launch-browser', envId)
+        const result = await window.electronAPI.invoke<boolean>('launch-browser', { envId, launchMode })
         if (result) {
           commit('UPDATE_STATUS', { id: envId, status: 'running' })
         }

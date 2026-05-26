@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div v-if="visible" class="fixed inset-0 z-[9999] flex items-center justify-center" @click.self="onCancel">
+    <div v-if="visible" class="fixed inset-0 z-[9999] flex items-center justify-center" @mousedown.self="onCancel">
       <div class="bg-white rounded-xl shadow-xl w-[400px] max-w-[90vw] overflow-hidden animate-scale-in">
         <!-- 标题栏 -->
         <div class="px-6 py-4 border-b border-slate-200">

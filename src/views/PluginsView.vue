@@ -111,7 +111,7 @@
       <div
         v-if="uninstallTarget"
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-        @click.self="uninstallTarget = null"
+        @mousedown.self="uninstallTarget = null"
       >
         <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
           <div class="flex items-start gap-3 mb-4">

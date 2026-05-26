@@ -31,6 +31,10 @@ export interface Environment {
   name: string
   fingerprint: FingerprintConfig
   proxy?: ProxyConfig
+  desktopShortcuts?: {
+    standard?: string
+    cdp?: string
+  }
   userDataDir: string
   cdpPort: number
   createdAt: string
@@ -54,6 +58,14 @@ export interface Settings {
   syncDelay: number
   environmentPageSize: number
   proxyPageSize: number
+  floatingToolbarDock: {
+    edge: 'top' | 'right' | 'bottom' | 'left'
+    offset: number
+    collapsed: boolean
+    displayId?: number
+    x?: number
+    y?: number
+  }
 }
 
 export interface PluginRecord {
@@ -114,7 +126,12 @@ const defaultSettings: Settings = {
   minimizeToTray: false,
   syncDelay: 50,
   environmentPageSize: 10,
-  proxyPageSize: 10
+  proxyPageSize: 10,
+  floatingToolbarDock: {
+    edge: 'top',
+    offset: -1,
+    collapsed: false
+  }
 }
 
 /**

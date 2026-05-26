@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click.self="$emit('close')">
+  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @mousedown.self="$emit('close')">
     <div class="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-hidden">
       <div class="p-4 border-b border-gray-200 flex items-center justify-between">
         <h3 class="text-lg font-semibold text-gray-800">{{ isEdit ? '编辑环境' : (isBatchMode ? '批量创建环境' : '新建环境') }}</h3>
@@ -46,6 +46,22 @@
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">标签</label>
             <input v-model="tagsInput" type="text" class="input" placeholder="用逗号分隔">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">CDP端口（调试启动）</label>
+            <input
+              v-model.number="formData.cdpPort"
+              type="number"
+              min="1024"
+              max="65535"
+              class="input"
+              :class="{ 'border-red-400 bg-red-50': fieldErrors.cdpPort }"
+              placeholder="留空随机"
+              @blur="validateField('cdpPort')"
+              @input="delete fieldErrors.cdpPort"
+            />
+            <p v-if="fieldErrors.cdpPort" class="mt-1 text-xs text-red-500">{{ fieldErrors.cdpPort }}</p>
           </div>
 
           <!-- 分组分配 -->
@@ -307,12 +323,23 @@ function validateField(field: string) {
       delete fieldErrors.value.proxyHost
     }
   }
+  if (field === 'cdpPort') {
+    const port = normalizeCDPPort(formData.value.cdpPort)
+    if (formData.value.cdpPort !== undefined && formData.value.cdpPort !== null && !port) {
+      fieldErrors.value.cdpPort = '端口范围为 1024-65535，留空则随机分配'
+    } else if (isBatchMode.value && port && port + batchCount.value - 1 > 65535) {
+      fieldErrors.value.cdpPort = '批量递增后的端口不能超过 65535'
+    } else {
+      delete fieldErrors.value.cdpPort
+    }
+  }
 }
 
 function validateAll(): boolean {
   validateField('name')
   validateField('proxyHost')
-  return !fieldErrors.value.name && !fieldErrors.value.proxyHost
+  validateField('cdpPort')
+  return !fieldErrors.value.name && !fieldErrors.value.proxyHost && !fieldErrors.value.cdpPort
 }
 
 onMounted(() => {
@@ -339,7 +366,7 @@ const defaultFingerprint = (): FingerprintConfig => ({
   brandVersion: '120.0.6099.71',
   hardwareConcurrency: 4,
   timezone: 'Asia/Shanghai',
-  lang: 'en-US',
+  lang: 'zh-CN',
   followIpGeo: false,
 })
 
@@ -354,6 +381,7 @@ const formData = ref<{
   tags: string[]
   color: string
   groupId?: string
+  cdpPort?: number | null
   fingerprint: FingerprintConfig
   proxy: ProxyConfig
 }>({
@@ -361,6 +389,7 @@ const formData = ref<{
   tags: [],
   color: colors[0],
   groupId: undefined,
+  cdpPort: undefined,
   fingerprint: defaultFingerprint(),
   proxy: defaultProxy()
 })
@@ -372,6 +401,7 @@ watch(() => props.environment, (env) => {
       tags: env.tags,
       color: env.color,
       groupId: env.groupId,
+      cdpPort: env.cdpPort,
       fingerprint: { ...env.fingerprint },
       proxy: env.proxy ? { ...env.proxy } : defaultProxy()
     }
@@ -398,6 +428,7 @@ watch(() => props.environment, (env) => {
       tags: [],
       color: colors[0],
       groupId: undefined,
+      cdpPort: undefined,
       fingerprint: defaultFingerprint(),
       proxy: defaultProxy()
     }
@@ -429,11 +460,18 @@ function onTimezoneChange() {
   }
 }
 
+function normalizeCDPPort(value: unknown): number | undefined {
+  if (value === '' || value === undefined || value === null) return undefined
+  const port = Number(value)
+  return Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : undefined
+}
+
 // ---- 保存 ----
 function save() {
   if (!validateAll()) return
   const tags = tagsInput.value.split(',').map(t => t.trim()).filter(t => t)
   const proxy = useProxy.value && formData.value.proxy?.host ? formData.value.proxy : undefined
+  const cdpPort = normalizeCDPPort(formData.value.cdpPort)
 
   if (isBatchMode.value) {
     // 批量模式：生成多条环境数据，每条独立随机指纹 seed
@@ -444,6 +482,7 @@ function save() {
         tags,
         color: formData.value.color,
         groupId: formData.value.groupId || undefined,
+        ...(cdpPort ? { cdpPort: cdpPort + i } : {}),
         fingerprint: { ...formData.value.fingerprint, seed: Math.floor(Math.random() * 1000000) },
         proxy,
       })
@@ -455,6 +494,7 @@ function save() {
       tags,
       color: formData.value.color,
       groupId: formData.value.groupId || undefined,
+      ...(cdpPort ? { cdpPort } : {}),
       fingerprint: formData.value.fingerprint,
       proxy,
     }

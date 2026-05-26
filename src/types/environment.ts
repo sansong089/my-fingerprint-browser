@@ -24,12 +24,16 @@ export interface ProxyConfig {
   password?: string
 }
 
-/** v2.0 新增字段：groupId, templateId, cdpPort(主进程分配), launchedAt */
+/** v2.0 新增字段：groupId, templateId, cdpPort(调试端口), launchedAt */
 export interface Environment {
   id: string
   name: string
   fingerprint: FingerprintConfig
   proxy?: ProxyConfig
+  desktopShortcuts?: {
+    standard?: string
+    cdp?: string
+  }
   userDataDir: string
   cdpPort: number
   createdAt: string

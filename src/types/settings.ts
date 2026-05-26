@@ -12,4 +12,12 @@ export interface Settings {
   syncDelay: number
   environmentPageSize: number
   proxyPageSize: number
+  floatingToolbarDock: {
+    edge: 'top' | 'right' | 'bottom' | 'left'
+    offset: number
+    collapsed: boolean
+    displayId?: number
+    x?: number
+    y?: number
+  }
 }

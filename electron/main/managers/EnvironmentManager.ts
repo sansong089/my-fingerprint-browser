@@ -8,7 +8,7 @@ import { pluginInstallService } from '../services/PluginInstallService'
 import { geoLocaleService, type GeoLocaleResult } from '../services/GeoLocaleService'
 import { app } from 'electron'
 import { join } from 'path'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { spawnSync } from 'child_process'
 
@@ -92,6 +92,7 @@ class EnvironmentManager {
     const env = this.getEnvironment(id)
     this.closeBrowser(id)
     if (env) {
+      this.cleanupDesktopShortcuts(env)
       pluginInstallService.cleanupEnvironment(id, env.userDataDir)
     }
     storageService.deleteEnvironment(id)
@@ -193,6 +194,13 @@ class EnvironmentManager {
       iconLocation: launchSpec.browserPath,
     })
 
+    this.updateEnvironment(id, {
+      desktopShortcuts: {
+        ...(env.desktopShortcuts || {}),
+        [launchMode]: shortcutPath,
+      },
+    })
+
     activityLogService.log({
       envId: id,
       action: 'launch',
@@ -204,6 +212,38 @@ class EnvironmentManager {
 
   private sanitizeShortcutFileName(name: string): string {
     return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'environment-shortcut.lnk'
+  }
+
+  private cleanupDesktopShortcuts(env: Environment): void {
+    if (process.platform !== 'win32') {
+      return
+    }
+
+    const shortcutPaths = new Set<string>()
+
+    if (env.desktopShortcuts?.standard) {
+      shortcutPaths.add(env.desktopShortcuts.standard)
+    }
+    if (env.desktopShortcuts?.cdp) {
+      shortcutPaths.add(env.desktopShortcuts.cdp)
+    }
+
+    const removedPaths: string[] = []
+    for (const shortcutPath of shortcutPaths) {
+      if (!existsSync(shortcutPath)) {
+        continue
+      }
+      unlinkSync(shortcutPath)
+      removedPaths.push(shortcutPath)
+    }
+
+    if (removedPaths.length > 0) {
+      activityLogService.log({
+        envId: env.id,
+        action: 'delete',
+        details: `删除环境时清理桌面快捷方式: ${removedPaths.join(' | ')}`,
+      })
+    }
   }
 
   private writeWindowsShortcut(options: {

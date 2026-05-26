@@ -10,6 +10,11 @@ const defaultSettings: Settings = {
   syncDelay: 50,
   environmentPageSize: 10,
   proxyPageSize: 10,
+  floatingToolbarDock: {
+    edge: 'top',
+    offset: -1,
+    collapsed: false,
+  },
 }
 
 export default {

@@ -11,6 +11,7 @@ export interface CreateEnvironmentParams {
   tags?: string[]
   color?: string
   groupId?: string
+  cdpPort?: number
 }
 
 export interface UpdateEnvironmentParams extends Partial<CreateEnvironmentParams> {

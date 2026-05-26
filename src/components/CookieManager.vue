@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="$emit('close')">
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @mousedown.self="$emit('close')">
     <div class="bg-white rounded-xl shadow-2xl w-[860px] max-h-[85vh] flex flex-col">
       <!-- 标题栏 -->
       <div class="px-5 py-4 border-b border-slate-200 flex items-center gap-3 shrink-0">
@@ -104,7 +104,7 @@
     </div>
 
     <!-- 新增/编辑弹窗 -->
-    <div v-if="showEditModal" class="fixed inset-0 bg-black/30 flex items-center justify-center z-[60]" @click.self="showEditModal = false">
+    <div v-if="showEditModal" class="fixed inset-0 bg-black/30 flex items-center justify-center z-[60]" @mousedown.self="showEditModal = false">
       <div class="bg-white rounded-xl shadow-xl w-[480px] max-h-[90vh] overflow-y-auto">
         <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
           <h4 class="font-semibold text-slate-800">{{ editForm.isNew ? '新增 Cookie' : '编辑 Cookie' }}</h4>
