@@ -138,7 +138,6 @@
                 <input type="checkbox" :checked="allSelected" @change="toggleAll" />
               </th>
               <th class="h-10 w-14 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">编号</th>
-              <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">颜色</th>
               <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">名称</th>
               <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">状态</th>
               <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">代理</th>
@@ -155,9 +154,6 @@
             >
               <td class="py-2.5 px-3 text-center"><input type="checkbox" :checked="isSelected(env.id)" @change="toggleSelection(env.id)" /></td>
               <td class="py-2.5 px-4 text-center text-xs font-medium text-slate-500">{{ rowNumber(index) }}</td>
-              <td class="py-2.5 px-4 text-center">
-                <span class="inline-block w-4 h-4 rounded-full" :style="{ backgroundColor: env.color }"></span>
-              </td>
               <td class="py-2.5 px-4 font-medium text-slate-700 text-center">{{ env.name }}</td>
               <td class="py-2.5 px-4 text-center">
                 <span class="text-[11px] px-2 py-0.5 rounded-full font-medium"
