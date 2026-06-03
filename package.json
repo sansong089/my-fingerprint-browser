@@ -13,6 +13,7 @@
   "dependencies": {
     "chrome-remote-interface": "^0.34.0",
     "electron-store": "^8.2.0",
+    "fingerprint-generator": "^2.1.82",
     "lucide-vue-next": "^1.0.0",
     "uuid": "^9.0.1",
     "vue": "^3.4.21",

@@ -97,9 +97,31 @@
                 <input v-model.number="formData.fingerprint.seed" type="number" class="input text-sm">
               </div>
 
+              <!-- 批量模式：随机指纹开关 -->
+              <label v-if="isBatchMode" class="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
+                <input v-model="batchRandomFingerprint" type="checkbox" class="w-4 h-4">
+                <span>
+                  <span class="block text-xs text-blue-700 font-medium">随机指纹</span>
+                  <span class="block text-[11px] text-blue-500">每个环境自动生成独立的平台、品牌、CPU配置</span>
+                </span>
+              </label>
+
               <div>
-                <label class="block text-xs text-gray-600 mb-1">平台</label>
-                <select v-model="formData.fingerprint.platform" class="input text-sm">
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-xs text-gray-600">平台</label>
+                  <button
+                    v-if="!isBatchMode || !batchRandomFingerprint"
+                    type="button"
+                    @click="generateAndFillFingerprint"
+                    class="text-[11px] text-blue-500 hover:text-blue-700 underline"
+                  >重新生成</button>
+                </div>
+                <select
+                  v-model="formData.fingerprint.platform"
+                  class="input text-sm"
+                  :disabled="isBatchMode && batchRandomFingerprint"
+                  :class="{ 'bg-slate-100 text-slate-400 cursor-not-allowed': isBatchMode && batchRandomFingerprint }"
+                >
                   <option value="windows">Windows</option>
                   <option value="linux">Linux</option>
                   <option value="macos">macOS</option>
@@ -108,7 +130,12 @@
 
               <div>
                 <label class="block text-xs text-gray-600 mb-1">浏览器品牌</label>
-                <select v-model="formData.fingerprint.brand" class="input text-sm">
+                <select
+                  v-model="formData.fingerprint.brand"
+                  class="input text-sm"
+                  :disabled="isBatchMode && batchRandomFingerprint"
+                  :class="{ 'bg-slate-100 text-slate-400 cursor-not-allowed': isBatchMode && batchRandomFingerprint }"
+                >
                   <option value="Chrome">Chrome</option>
                   <option value="Edge">Edge</option>
                   <option value="Opera">Opera</option>
@@ -118,7 +145,13 @@
 
               <div>
                 <label class="block text-xs text-gray-600 mb-1">CPU核心数</label>
-                <input v-model.number="formData.fingerprint.hardwareConcurrency" type="number" class="input text-sm">
+                <input
+                  v-model.number="formData.fingerprint.hardwareConcurrency"
+                  type="number"
+                  class="input text-sm"
+                  :disabled="isBatchMode && batchRandomFingerprint"
+                  :class="{ 'bg-slate-100 text-slate-400 cursor-not-allowed': isBatchMode && batchRandomFingerprint }"
+                >
               </div>
 
               <label class="flex items-start gap-2 rounded-md border-t border-gray-200 bg-slate-50 px-3 py-2 pt-3">
@@ -297,6 +330,7 @@ const useProxy = ref(false)
 const proxyMode = ref<'pool' | 'manual'>('pool')
 const selectedProxyId = ref<string>('')
 const fieldErrors = ref<Record<string, string>>({})
+const batchRandomFingerprint = ref(true) // 批量模式默认开启随机指纹
 
 async function focusNameInput() {
   await nextTick()
@@ -346,6 +380,11 @@ onMounted(() => {
   if (!proxies.value.length) store.dispatch('proxies/fetchAll')
   if (!groupsList.value.length) store.dispatch('groups/fetchAll')
   void focusNameInput()
+
+  // 单个创建模式：自动生成指纹填充
+  if (!isEdit.value && !isBatchMode.value) {
+    generateAndFillFingerprint()
+  }
 })
 
 // ---- 数据源 ----
@@ -460,6 +499,31 @@ function onTimezoneChange() {
   }
 }
 
+/** 调用主进程生成指纹并填充平台、品牌、CPU 核心数 */
+async function generateAndFillFingerprint() {
+  try {
+    const result = await window.electronAPI.invoke<{
+      platform: string
+      brand: string
+      hardwareConcurrency: number
+      platformVersion: string
+      brandVersion: string
+    }>('generate-fingerprint')
+
+    if (result && result.platform) {
+      formData.value.fingerprint.platform = result.platform as any
+      formData.value.fingerprint.brand = result.brand as any
+      formData.value.fingerprint.hardwareConcurrency = result.hardwareConcurrency
+      formData.value.fingerprint.platformVersion = result.platformVersion
+      formData.value.fingerprint.brandVersion = result.brandVersion
+      // 同时更新 seed，确保指纹唯一性
+      formData.value.fingerprint.seed = Math.floor(Math.random() * 1000000)
+    }
+  } catch (e) {
+    console.warn('[generateAndFillFingerprint] Failed:', e)
+  }
+}
+
 function normalizeCDPPort(value: unknown): number | undefined {
   if (value === '' || value === undefined || value === null) return undefined
   const port = Number(value)
@@ -467,23 +531,49 @@ function normalizeCDPPort(value: unknown): number | undefined {
 }
 
 // ---- 保存 ----
-function save() {
+async function save() {
   if (!validateAll()) return
   const tags = tagsInput.value.split(',').map(t => t.trim()).filter(t => t)
   const proxy = useProxy.value && formData.value.proxy?.host ? formData.value.proxy : undefined
   const cdpPort = normalizeCDPPort(formData.value.cdpPort)
 
   if (isBatchMode.value) {
-    // 批量模式：生成多条环境数据，每条独立随机指纹 seed
+    // 批量模式
     const batch: Array<Partial<Environment>> = []
     for (let i = 0; i < batchCount.value; i++) {
+      let fingerprint = { ...formData.value.fingerprint, seed: Math.floor(Math.random() * 1000000) }
+
+      // 随机指纹模式：每个环境独立生成平台、品牌、CPU
+      if (batchRandomFingerprint.value) {
+        try {
+          const generated = await window.electronAPI.invoke<{
+            platform: string
+            brand: string
+            hardwareConcurrency: number
+            platformVersion: string
+            brandVersion: string
+          }>('generate-fingerprint')
+
+          fingerprint = {
+            ...fingerprint,
+            platform: generated.platform as any,
+            brand: generated.brand as any,
+            hardwareConcurrency: generated.hardwareConcurrency,
+            platformVersion: generated.platformVersion,
+            brandVersion: generated.brandVersion,
+          }
+        } catch (e) {
+          console.warn('[save] generateFingerprint failed, using form values:', e)
+        }
+      }
+
       batch.push({
         name: `${formData.value.name}${batchStartIndex.value + i}`,
         tags,
         color: formData.value.color,
         groupId: formData.value.groupId || undefined,
         ...(cdpPort ? { cdpPort: cdpPort + i } : {}),
-        fingerprint: { ...formData.value.fingerprint, seed: Math.floor(Math.random() * 1000000) },
+        fingerprint,
         proxy,
       })
     }

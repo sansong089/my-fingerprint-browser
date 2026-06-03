@@ -19,6 +19,7 @@ import { pluginInstallService } from './services/PluginInstallService'
 import { pluginStoreWindowService } from './services/PluginStoreWindowService'
 import { localApiService } from './services/LocalApiService'
 import { bookmarkImportService } from './services/BookmarkImportService'
+import { generateFingerprint } from './utils/fingerprintGenerator'
 
 // Global references
 let mainWindow: BrowserWindow | null = null
@@ -688,7 +689,6 @@ function createWindow() {
   if (isDev) {
     runtimeLog('createWindow:loadDevUrl', 'http://localhost:5173')
     mainWindow.loadURL('http://localhost:5173')
-    mainWindow.webContents.openDevTools()
   } else {
     runtimeLog('createWindow:loadFile', join(__dirname, '../../dist/index.html'))
     mainWindow.loadFile(join(__dirname, '../../dist/index.html'))
@@ -697,6 +697,9 @@ function createWindow() {
   mainWindow.on('ready-to-show', () => {
     runtimeLog('mainWindow:ready-to-show')
     mainWindow?.show()
+    if (isDev) {
+      mainWindow?.webContents.openDevTools()
+    }
   })
 
   // 最大化时自动排列所有运行中的浏览器窗口
@@ -836,6 +839,11 @@ ipcMain.handle('delete-environment', (_, id) => {
   const validation = validateIPC('delete-environment', { id })
   if (!validation.success) throw new Error(validation.error)
   return environmentManager.deleteEnvironment(id)
+})
+
+// --- 指纹生成 ---
+ipcMain.handle('generate-fingerprint', () => {
+  return generateFingerprint()
 })
 
 // --- Browser operations ---
