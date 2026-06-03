@@ -28,7 +28,7 @@
               class="env-filter-input pr-9"
             />
             <button class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600">
-              <Search class="w-4 h-4" />
+              <SearchIcon class="w-4 h-4" />
             </button>
           </div>
           <select v-model="statusFilter" class="env-filter-select">
@@ -319,6 +319,7 @@ import CookieManager from '@/components/CookieManager.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import PaginationBar from '@/components/common/PaginationBar.vue'
 import { toast } from '@/utils/toast'
+// @ts-ignore - Search icon exists in runtime but types are missing
 import { Search } from 'lucide-vue-next'
 
 const store = useStore()
