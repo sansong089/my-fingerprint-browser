@@ -207,15 +207,15 @@ async function reinstallMissing(pluginId: string) {
   padding: 5px 10px;
   font-size: 12px;
   background: #ffffff;
-  color: #374151;
-  border: 1px solid #d1d5db;
+  color: #3b82f6;
+  border: 1px solid #bfdbfe;
   border-radius: 6px;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .plugin-tool-btn:hover:not(:disabled) {
-  background: #f9fafb;
-  border-color: #cbd5e1;
+  background: #eff6ff;
+  border-color: #93c5fd;
 }
 .plugin-tool-btn-danger {
   padding: 5px 10px;

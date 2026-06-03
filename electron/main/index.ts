@@ -697,9 +697,6 @@ function createWindow() {
   mainWindow.on('ready-to-show', () => {
     runtimeLog('mainWindow:ready-to-show')
     mainWindow?.show()
-    if (isDev) {
-      mainWindow?.webContents.openDevTools()
-    }
   })
 
   // 最大化时自动排列所有运行中的浏览器窗口

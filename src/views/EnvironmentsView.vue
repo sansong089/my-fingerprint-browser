@@ -17,21 +17,30 @@
       </div>
 
       <!-- 筛选和批量操作栏 -->
-      <div class="flex items-center gap-3 mb-3">
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="搜索环境名称或标签..."
-          class="env-filter-input"
-        />
-        <select v-model="statusFilter" class="env-filter-select">
-          <option value="">全部状态</option>
-          <option value="running">运行中</option>
-          <option value="stopped">已停止</option>
-        </select>
-        <div class="flex-1"></div>
-        <span v-if="selectionCount > 0" class="text-xs text-slate-500">{{ selectionSummary }}</span>
-        <template v-if="selectionCount > 0">
+      <div class="space-y-3 mb-3">
+        <!-- 第一行：搜索栏 -->
+        <div class="flex items-center gap-3">
+          <div class="relative">
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="搜索环境名称或标签..."
+              class="env-filter-input pr-9"
+            />
+            <button class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600">
+              <Search class="w-4 h-4" />
+            </button>
+          </div>
+          <select v-model="statusFilter" class="env-filter-select">
+            <option value="">全部状态</option>
+            <option value="running">运行中</option>
+            <option value="stopped">已停止</option>
+          </select>
+          <div class="flex-1"></div>
+        </div>
+
+        <!-- 第二行：操作按钮 -->
+        <div class="flex items-center gap-2">
           <div class="toolbar-split" @click.stop>
             <button
               @click="batchLaunch"
@@ -74,14 +83,6 @@
           >
             关闭
           </button>
-          <button
-            @click="batchDelete"
-            :disabled="!canDeleteSelected"
-            class="action-btn action-btn-delete"
-            :title="canDeleteSelected ? `删除 ${selectionCount} 个环境` : '请选择要删除的环境'"
-          >
-            删除
-          </button>
           <div class="toolbar-split" @click.stop>
             <button
               @click="batchCreateDesktopShortcuts('standard')"
@@ -116,7 +117,16 @@
               </button>
             </div>
           </div>
-        </template>
+          <div class="flex-1"></div>
+          <button
+            @click="batchDelete"
+            :disabled="!canDeleteSelected"
+            class="action-btn action-btn-delete"
+            :title="canDeleteSelected ? `删除 ${selectionCount} 个环境` : '请选择要删除的环境'"
+          >
+            删除
+          </button>
+        </div>
       </div>
 
       <!-- P2: 表格 -->
@@ -160,11 +170,11 @@
                 <div class="flex items-center justify-center gap-1">
                   <template v-if="env.status === 'running'">
                     <button @click.stop="minimizeEnv(env.id)"
-                      class="row-action-btn row-action-btn--neutral" title="最小化">最小化</button>
+                      class="ghost-btn" title="最小化">最小化</button>
                     <button @click.stop="maximizeEnv(env.id)"
-                      class="row-action-btn row-action-btn--accent" title="最大化">最大化</button>
+                      class="ghost-btn" title="最大化">最大化</button>
                     <button @click.stop="closeEnv(env.id)"
-                      class="row-action-btn row-action-btn--danger" title="关闭">关闭</button>
+                      class="ghost-btn" title="关闭">关闭</button>
                   </template>
                   <template v-else>
                     <div class="row-split" @click.stop>
@@ -232,9 +242,11 @@
                     </div>
                   </div>
                     <button @click.stop="editEnv(env)"
-                      class="row-action-btn row-action-btn--info" title="编辑">编辑</button>
+                      class="ghost-btn" title="编辑">编辑</button>
                     <button @click.stop="openCookieManager(env)"
-                      class="row-action-btn row-action-btn--warm" title="Cookie管理">Cookie</button>
+                      class="ghost-btn" title="Cookie管理">Cookie</button>
+                    <button @click.stop="deleteEnv(env)"
+                      class="ghost-btn" title="删除">删除</button>
                   </template>
                 </div>
               </td>
@@ -311,6 +323,7 @@ import CookieManager from '@/components/CookieManager.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import PaginationBar from '@/components/common/PaginationBar.vue'
 import { toast } from '@/utils/toast'
+import { Search } from 'lucide-vue-next'
 
 const store = useStore()
 const searchQuery = ref('')
@@ -323,6 +336,7 @@ const showBookmarkImport = ref(false)
 const showCookieManager = ref(false)
 const cookieEnv = ref<Environment | null>(null)
 const showDeleteConfirm = ref(false)
+const deletingEnv = ref<Environment | null>(null)
 const currentPage = ref(1)
 const activeMenuKey = ref<string | null>(null)
 
@@ -380,9 +394,12 @@ const selectionSummary = computed(() => {
 const allSelected = computed(
   () => paginatedEnvironments.value.length > 0 && paginatedEnvironments.value.every((e: any) => selectedIds.value.includes(e.id))
 )
-const deleteConfirmMessage = computed(() =>
-  `确认删除选中的 ${selectedIds.value.length} 个环境？此操作不可恢复。`
-)
+const deleteConfirmMessage = computed(() => {
+  if (deletingEnv.value) {
+    return `确认删除环境「${deletingEnv.value.name}」？此操作不可恢复。`
+  }
+  return `确认删除选中的 ${selectedIds.value.length} 个环境？此操作不可恢复。`
+})
 
 const filteredEnvironments = computed(() => {
   let result = environments.value
@@ -462,6 +479,14 @@ function editEnv(env: any) {
   closeInlineMenu()
   editingEnvironment.value = env
   showEditor.value = true
+}
+async function deleteEnv(env: any) {
+  if (env.status === 'running') {
+    toast.error('请先关闭环境再删除')
+    return
+  }
+  deletingEnv.value = env
+  showDeleteConfirm.value = true
 }
 function toggleLaunchMenu(id: string) {
   const key = `launch:${id}`
@@ -609,9 +634,18 @@ async function batchDelete() {
 
 function cancelBatchDelete() {
   showDeleteConfirm.value = false
+  deletingEnv.value = null
 }
 
 async function confirmBatchDelete() {
+  // 单个删除
+  if (deletingEnv.value) {
+    const env = deletingEnv.value
+    cancelBatchDelete()
+    await store.dispatch('environments/delete', env.id)
+    return
+  }
+  // 批量删除
   const ids = [...selectedIds.value]
   cancelBatchDelete()
   if (ids.length === 0) return
@@ -691,7 +725,7 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
   background: #ffffff;
   color: #374151;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0.01em;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease, filter 120ms ease;
@@ -784,20 +818,53 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
   outline-offset: 1px;
 }
 .row-action-btn--neutral {
-  color: #334155;
+  color: #64748b;
+}
+.row-action-btn--neutral:hover {
+  background: #f1f5f9;
+  color: #475569;
 }
 .row-action-btn--accent {
-  color: #334155;
+  color: #7c3aed;
+}
+.row-action-btn--accent:hover {
+  background: #f5f3ff;
+  color: #6d28d9;
 }
 .row-action-btn--danger {
-  color: #334155;
+  color: #ef4444;
+}
+.row-action-btn--danger:hover {
+  background: #fef2f2;
+  color: #dc2626;
 }
 .row-action-btn--info {
-  color: #334155;
+  color: #3b82f6;
+}
+.row-action-btn--info:hover {
+  background: #eff6ff;
+  color: #2563eb;
 }
 .row-action-btn--warm {
-  color: #334155;
+  color: #f59e0b;
 }
+.row-action-btn--warm:hover {
+  background: #fffbeb;
+  color: #d97706;
+}
+.ghost-btn {
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  color: #3b82f6;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.ghost-btn:hover { background: #eff6ff; color: #2563eb; }
+.ghost-btn-danger { color: #ef4444; }
+.ghost-btn-danger:hover { background: #fef2f2; }
+.ghost-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .row-split {
   position: relative;
   display: inline-flex;
@@ -839,16 +906,23 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
 }
 .row-split__main--start,
 .row-split__toggle--start {
-  color: #334155;
+  color: #3b82f6;
 }
 .row-split__main--start:hover,
 .row-split__toggle--start:hover,
 .row-split__toggle--open.row-split__toggle--start {
-  color: #0f172a;
+  color: #2563eb;
+  background: #eff6ff;
 }
 .row-split__main--shortcut,
 .row-split__toggle--shortcut {
-  color: #334155;
+  color: #3b82f6;
+}
+.row-split__main--shortcut:hover,
+.row-split__toggle--shortcut:hover,
+.row-split__toggle--open.row-split__toggle--shortcut {
+  color: #2563eb;
+  background: #eff6ff;
 }
 .row-split__caret {
   width: 0;

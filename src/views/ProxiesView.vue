@@ -119,7 +119,7 @@
               </button>
               <button @click="edit(p)" class="ghost-btn text-xs">编辑</button>
               <button @click="copyProxy(p)" class="ghost-btn text-xs">复制</button>
-              <button @click="deleteOne(p.id)" class="ghost-btn ghost-btn-danger text-xs">删除</button>
+              <button @click="deleteOne(p.id)" class="ghost-btn text-xs">删除</button>
             </div>
           </td>
         </tr>
@@ -666,11 +666,12 @@ async function doMoveGroup(groupId: string) {
   padding: 4px 8px;
   background: none;
   border: none;
-  color: #64748b;
+  color: #3b82f6;
   cursor: pointer;
   border-radius: 4px;
+  font-size: 12px;
 }
-.ghost-btn:hover { background: #f1f5f9; }
+.ghost-btn:hover { background: #eff6ff; color: #2563eb; }
 .ghost-btn-danger { color: #ef4444; }
 .ghost-btn-danger:hover { background: #fef2f2; }
 .ghost-btn:disabled { opacity: 0.4; cursor: not-allowed; }
