@@ -24,15 +24,15 @@
           class="h-8 px-3 text-xs rounded-lg border border-slate-200 bg-white focus:border-blue-400 focus:outline-none w-52"
         />
         <div class="flex-1"></div>
-        <button @click="refreshCookies" :disabled="!isRunning || loading" class="tool-btn">
+        <button @click="refreshCookies" :disabled="loading" class="tool-btn">
           <svg class="w-3.5 h-3.5" :class="loading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
           </svg>
           刷新
         </button>
         <button @click="openAddDialog" :disabled="!isRunning" class="tool-btn">+ 新增</button>
-        <button @click="triggerImport" :disabled="!isRunning" class="tool-btn">导入</button>
-        <button @click="exportCookies" :disabled="!isRunning || cookies.length === 0" class="tool-btn">导出</button>
+        <button @click="triggerImport" class="tool-btn">导入</button>
+        <button @click="exportCookies" :disabled="cookies.length === 0" class="tool-btn">导出</button>
         <button @click="confirmClearAll" :disabled="!isRunning || cookies.length === 0" class="tool-btn-danger">清空全部</button>
         <input ref="importFileInput" type="file" accept=".json,.txt" class="hidden" @change="handleImportFile" />
       </div>
@@ -140,7 +140,7 @@
             </label>
           </div>
         </div>
-        <div class="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
+        <div class="px-5 py-4 border-t border-slate-200 flex justify-center gap-2">
           <button @click="showEditModal = false" class="btn-outline text-xs">取消</button>
           <button @click="saveCookie" :disabled="!editForm.name || !editForm.domain" class="btn-primary text-xs">保存</button>
         </div>
@@ -234,7 +234,6 @@ async function focusEditInput() {
 }
 
 async function refreshCookies() {
-  if (!props.isRunning) return
   loading.value = true
   try {
     const result = await (window as any).electronAPI.invoke('cookie-get', { envId: props.envId })
@@ -395,7 +394,7 @@ async function handleImportFile(e: Event) {
 }
 
 onMounted(() => {
-  if (props.isRunning) refreshCookies()
+  refreshCookies()
 })
 </script>
 

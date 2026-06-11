@@ -6,7 +6,12 @@
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-sm font-semibold text-gray-700">环境列表</h2>
           <div class="flex gap-1">
-            <button @click="createEnvironment" class="p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600" title="新建环境">
+            <button
+              @click="createEnvironment"
+              :disabled="isCreatingEnvironment"
+              class="p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="新建环境"
+            >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
               </svg>
@@ -66,7 +71,7 @@
           <button @click="startSyncMode" :disabled="selectedEnvironments.length < 2" class="btn btn-primary text-xs py-1 px-2 disabled:opacity-50">
             同步操作
           </button>
-          <button @click="batchDelete" class="btn btn-danger text-xs py-1 px-2">
+          <button @click="batchDelete" :disabled="isEnvironmentOperationBusy" class="btn btn-danger text-xs py-1 px-2 disabled:opacity-50">
             批量删除
           </button>
         </div>
@@ -155,9 +160,20 @@
     <EnvironmentEditor
       v-if="showEditor"
       :environment="editingEnvironment"
+      :saving="isEnvironmentOperationBusy"
       @close="closeEditor"
       @save="saveEnvironment"
     />
+
+    <div
+      v-if="isEnvironmentOperationBusy"
+      class="fixed inset-0 z-[60] bg-slate-950/25 flex items-center justify-center"
+    >
+      <div class="rounded-lg bg-white px-5 py-4 shadow-xl border border-slate-200 text-center">
+        <div class="mx-auto mb-3 h-8 w-8 rounded-full border-4 border-slate-200 border-t-blue-500 animate-spin"></div>
+        <p class="text-sm font-medium text-slate-700">{{ environmentOperationTitle }}</p>
+      </div>
+    </div>
 
     <!-- ConfirmDialog (替代 confirm) -->
     <ConfirmDialog
@@ -177,10 +193,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useStore } from 'vuex'
 import EnvironmentEditor from '@/components/EnvironmentEditor.vue'
-import type { Environment } from '@/types'
+import type { Environment, FingerprintConfig } from '@/types'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 
 const store = useStore()
+type EnvironmentCreateDraft = Partial<Environment> & { __randomFingerprint?: boolean }
 
 // 页面加载时获取环境列表
 onMounted(async () => {
@@ -192,12 +209,18 @@ const searchQuery = ref('')
 const viewMode = ref('grid')
 const showEditor = ref(false)
 const editingEnvironment = ref<Environment | null>(null)
+const isCreatingEnvironment = ref(false)
+const isDeletingEnvironment = ref(false)
 
 // 兼容旧 Dashboard（保留但指向新的 Vuex 模块结构）
 const environments = computed(() => (store.state.environments as any)?.list || [])
 const selectedEnvironments = computed<string[]>(() => (store.state.ui as any)?.selectedEnvIds || [])
 const runningEnvironments = computed(() => store.getters['environments/runningEnvironments'] || [])
 const runningCount = computed(() => runningEnvironments.value.length)
+const isEnvironmentOperationBusy = computed(() => isCreatingEnvironment.value || isDeletingEnvironment.value)
+const environmentOperationTitle = computed(() =>
+  isDeletingEnvironment.value ? '正在删除环境...' : '正在保存环境...'
+)
 
 const filteredEnvironments = computed(() => {
   if (!searchQuery.value) return environments.value
@@ -229,6 +252,7 @@ const openEnvironment = async (id: string) => {
 }
 
 const createEnvironment = async () => {
+  if (isEnvironmentOperationBusy.value) return
   editingEnvironment.value = null
   showEditor.value = true
 }
@@ -239,20 +263,57 @@ const closeEditor = () => {
 }
 
 const saveEnvironment = async (data: Partial<Environment> | Array<Partial<Environment>>) => {
-  if (Array.isArray(data)) {
-    for (const item of data) {
-      await store.dispatch('environments/create', item)
+  if (isEnvironmentOperationBusy.value) return
+
+  const editing = editingEnvironment.value
+  isCreatingEnvironment.value = true
+
+  try {
+    if (Array.isArray(data)) {
+      closeEditor()
+      for (const item of data) {
+        await store.dispatch('environments/create', await prepareEnvironmentCreateDraft(item as EnvironmentCreateDraft))
+      }
+      return
+    }
+
+    if (editing) {
+      await store.dispatch('updateEnvironment', { ...editing, ...data })
+    } else {
+      await store.dispatch('createEnvironment', data)
     }
     closeEditor()
-    return
+  } finally {
+    isCreatingEnvironment.value = false
   }
+}
 
-  if (editingEnvironment.value) {
-    await store.dispatch('updateEnvironment', { ...editingEnvironment.value, ...data })
-  } else {
-    await store.dispatch('createEnvironment', data)
+async function prepareEnvironmentCreateDraft(env: EnvironmentCreateDraft): Promise<Partial<Environment>> {
+  const { __randomFingerprint, ...draft } = env
+  if (!__randomFingerprint) return draft
+
+  try {
+    const generated = await window.electronAPI.invoke<{
+      platform: string
+      brand: string
+      hardwareConcurrency: number
+      platformVersion: string
+      brandVersion: string
+    }>('generate-fingerprint')
+
+    const fingerprint: FingerprintConfig = {
+      ...(draft.fingerprint as FingerprintConfig),
+      platform: generated.platform as FingerprintConfig['platform'],
+      brand: generated.brand as FingerprintConfig['brand'],
+      hardwareConcurrency: Math.max(4, generated.hardwareConcurrency),
+      platformVersion: generated.platformVersion,
+      brandVersion: generated.brandVersion,
+    }
+    return { ...draft, fingerprint }
+  } catch (error) {
+    console.warn('[prepareEnvironmentCreateDraft] generateFingerprint failed, using form values:', error)
+    return draft
   }
-  closeEditor()
 }
 
 const batchLaunch = async () => {
@@ -262,13 +323,24 @@ const batchLaunch = async () => {
 }
 
 const batchDelete = async () => {
+  if (isEnvironmentOperationBusy.value) return
   showConfirmDialog.value = true
 }
 
 const confirmBatchDelete = async () => {
   showConfirmDialog.value = false
-  for (const id of selectedEnvironments.value) {
-    await store.dispatch('environments/delete', id)
+  if (isEnvironmentOperationBusy.value) return
+
+  const ids = [...selectedEnvironments.value]
+  if (ids.length === 0) return
+
+  isDeletingEnvironment.value = true
+  try {
+    for (const id of ids) {
+      await store.dispatch('environments/delete', id)
+    }
+  } finally {
+    isDeletingEnvironment.value = false
   }
 }
 

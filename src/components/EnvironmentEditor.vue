@@ -1,9 +1,9 @@
 <template>
-  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @mousedown.self="$emit('close')">
+  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @mousedown.self="requestClose">
     <div class="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-hidden">
       <div class="p-4 border-b border-gray-200 flex items-center justify-between">
         <h3 class="text-lg font-semibold text-gray-800">{{ isEdit ? '编辑环境' : (isBatchMode ? '批量创建环境' : '新建环境') }}</h3>
-        <button @click="$emit('close')" class="p-1 hover:bg-gray-100 rounded">
+        <button @click="requestClose" :disabled="isBusy" class="p-1 hover:bg-gray-100 rounded disabled:opacity-50 disabled:cursor-not-allowed">
           <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
           </svg>
@@ -125,6 +125,8 @@
                   <option value="windows">Windows</option>
                   <option value="linux">Linux</option>
                   <option value="macos">macOS</option>
+                  <option value="ios">iOS</option>
+                  <option value="android">Android</option>
                 </select>
               </div>
 
@@ -277,10 +279,10 @@
         </div>
       </div>
 
-      <div class="p-4 border-t border-gray-200 flex justify-end gap-2">
-        <button @click="$emit('close')" class="btn btn-secondary">取消</button>
-        <button @click="save" :disabled="!formData.name.trim()" class="btn btn-primary">
-          {{ isEdit ? '保存' : (isBatchMode ? `创建 ${batchCount} 个` : '创建') }}
+      <div class="p-4 border-t border-gray-200 flex justify-center gap-2">
+        <button @click="requestClose" :disabled="isBusy" class="btn btn-secondary">取消</button>
+        <button @click="save" :disabled="isBusy || !formData.name.trim()" class="btn btn-primary">
+          {{ saveButtonText }}
         </button>
       </div>
     </div>
@@ -300,10 +302,12 @@ import {
 } from '@/constants/localeOptions'
 
 const store = useStore()
+type EnvironmentSaveDraft = Partial<Environment> & { __randomFingerprint?: boolean }
 
 const props = defineProps<{
   environment: Environment | null
   count?: number  // >1 时进入批量模式
+  saving?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -318,11 +322,18 @@ const isBatchMode = computed(() => !isEdit.value && (props.count ?? 1) > 1)
 const batchCount = ref(props.count && props.count > 1 ? props.count : 5)
 const batchStartIndex = ref(1)
 const nameInput = ref<HTMLInputElement | null>(null)
+const isSubmitting = ref(false)
+const isBusy = computed(() => isSubmitting.value || !!props.saving)
 
 const namePreview = computed(() => {
   if (!formData.value.name) return ''
   const end = batchStartIndex.value + batchCount.value - 1
   return `${formData.value.name}${batchStartIndex.value} ~ ${formData.value.name}${end}`
+})
+
+const saveButtonText = computed(() => {
+  if (isBusy.value) return isBatchMode.value ? `正在创建 ${batchCount.value} 个...` : '保存中...'
+  return isEdit.value ? '保存' : (isBatchMode.value ? `创建 ${batchCount.value} 个` : '创建')
 })
 
 const tagsInput = ref('')
@@ -374,6 +385,11 @@ function validateAll(): boolean {
   validateField('proxyHost')
   validateField('cdpPort')
   return !fieldErrors.value.name && !fieldErrors.value.proxyHost && !fieldErrors.value.cdpPort
+}
+
+function requestClose() {
+  if (isBusy.value) return
+  emit('close')
 }
 
 onMounted(() => {
@@ -513,7 +529,7 @@ async function generateAndFillFingerprint() {
     if (result && result.platform) {
       formData.value.fingerprint.platform = result.platform as any
       formData.value.fingerprint.brand = result.brand as any
-      formData.value.fingerprint.hardwareConcurrency = result.hardwareConcurrency
+      formData.value.fingerprint.hardwareConcurrency = Math.max(4, result.hardwareConcurrency)
       formData.value.fingerprint.platformVersion = result.platformVersion
       formData.value.fingerprint.brandVersion = result.brandVersion
       // 同时更新 seed，确保指纹唯一性
@@ -531,64 +547,45 @@ function normalizeCDPPort(value: unknown): number | undefined {
 }
 
 // ---- 保存 ----
-async function save() {
+function save() {
+  if (isBusy.value) return
   if (!validateAll()) return
+  isSubmitting.value = true
   const tags = tagsInput.value.split(',').map(t => t.trim()).filter(t => t)
   const proxy = useProxy.value && formData.value.proxy?.host ? formData.value.proxy : undefined
   const cdpPort = normalizeCDPPort(formData.value.cdpPort)
 
-  if (isBatchMode.value) {
-    // 批量模式
-    const batch: Array<Partial<Environment>> = []
-    for (let i = 0; i < batchCount.value; i++) {
-      let fingerprint = { ...formData.value.fingerprint, seed: Math.floor(Math.random() * 1000000) }
-
-      // 随机指纹模式：每个环境独立生成平台、品牌、CPU
-      if (batchRandomFingerprint.value) {
-        try {
-          const generated = await window.electronAPI.invoke<{
-            platform: string
-            brand: string
-            hardwareConcurrency: number
-            platformVersion: string
-            brandVersion: string
-          }>('generate-fingerprint')
-
-          fingerprint = {
-            ...fingerprint,
-            platform: generated.platform as any,
-            brand: generated.brand as any,
-            hardwareConcurrency: generated.hardwareConcurrency,
-            platformVersion: generated.platformVersion,
-            brandVersion: generated.brandVersion,
-          }
-        } catch (e) {
-          console.warn('[save] generateFingerprint failed, using form values:', e)
-        }
+  try {
+    if (isBatchMode.value) {
+      // 批量模式
+      const batch: EnvironmentSaveDraft[] = []
+      for (let i = 0; i < batchCount.value; i++) {
+        batch.push({
+          name: `${formData.value.name}${batchStartIndex.value + i}`,
+          tags,
+          color: formData.value.color,
+          groupId: formData.value.groupId || undefined,
+          ...(cdpPort ? { cdpPort: cdpPort + i } : {}),
+          fingerprint: { ...formData.value.fingerprint, seed: Math.floor(Math.random() * 1000000) },
+          proxy,
+          __randomFingerprint: batchRandomFingerprint.value,
+        })
       }
-
-      batch.push({
-        name: `${formData.value.name}${batchStartIndex.value + i}`,
+      emit('save', batch)
+    } else {
+      const data: Partial<Environment> = {
+        name: formData.value.name,
         tags,
         color: formData.value.color,
         groupId: formData.value.groupId || undefined,
-        ...(cdpPort ? { cdpPort: cdpPort + i } : {}),
-        fingerprint,
+        ...(cdpPort ? { cdpPort } : {}),
+        fingerprint: formData.value.fingerprint,
         proxy,
-      })
+      }
+      emit('save', data)
     }
-    emit('save', batch)
-  } else {
-    const data: Partial<Environment> = {
-      name: formData.value.name,
-      tags,
-      color: formData.value.color,
-      groupId: formData.value.groupId || undefined,
-      ...(cdpPort ? { cdpPort } : {}),
-      fingerprint: formData.value.fingerprint,
-      proxy,
-    }
-    emit('save', data)
+  } finally {
+    isSubmitting.value = false
   }
 }
 </script>

@@ -43,7 +43,10 @@ msbuild_output*.txt
 # Local app/runtime state
 .omx/
 .workbuddy/
-.codex
+.codex/*
+!.codex/skills/
+!.codex/skills/**
+.superpowers/
 *.local
 .env
 .env.*

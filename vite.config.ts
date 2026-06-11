@@ -40,7 +40,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron/main',
             rollupOptions: {
-              external: ['electron', 'electron-store', 'win32-window', '.node', 'fingerprint-generator']
+              external: ['electron', 'electron-store', 'win32-window', '.node', 'fingerprint-generator', 'better-sqlite3']
             }
           }
         }

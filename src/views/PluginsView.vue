@@ -69,18 +69,14 @@
             </p>
 
             <!-- 统计指标 -->
-            <div class="grid grid-cols-3 gap-1.5 text-[11px]">
+            <div class="grid grid-cols-2 gap-1.5 text-[11px]">
               <div class="metric-chip">
                 <span class="text-slate-400">目标</span>
                 <strong class="text-slate-700">{{ plugin.targetedEnvCount }}</strong>
               </div>
               <div class="metric-chip">
-                <span class="text-slate-400">已装</span>
-                <strong class="text-slate-700">{{ plugin.installedEnvCount }}</strong>
-              </div>
-              <div class="metric-chip" :class="plugin.missingEnvCount > 0 ? 'metric-chip-warn' : ''">
-                <span>缺失</span>
-                <strong>{{ plugin.missingEnvCount }}</strong>
+                <span class="text-slate-400">运行中</span>
+                <strong class="text-slate-700">{{ plugin.runningEnvCount }}</strong>
               </div>
             </div>
 
@@ -88,8 +84,6 @@
             <div class="flex gap-2 pt-1">
               <button
                 class="plugin-tool-btn flex-1"
-                :disabled="plugin.missingEnvCount === 0"
-                :class="plugin.missingEnvCount === 0 ? 'opacity-40 cursor-not-allowed' : ''"
                 @click="reinstallMissing(plugin.id)"
               >
                 补装缺失
@@ -128,7 +122,7 @@
               </p>
             </div>
           </div>
-          <div class="flex gap-2 justify-end">
+          <div class="flex gap-2 justify-center">
             <button
               class="plugin-dialog-btn"
               @click="uninstallTarget = null"

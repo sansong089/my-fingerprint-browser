@@ -10,187 +10,205 @@
         <h2 class="text-base font-semibold text-slate-800">环境管理</h2>
         <span class="text-xs text-slate-400">{{ filteredEnvironments.length }} 个环境</span>
         <div class="flex-1"></div>
-        <button @click="openCreateDialog" class="btn-primary text-xs">新建环境</button>
-        <button @click="openBatchCreate" class="btn-outline text-xs">批量创建</button>
-        <button @click="showBookmarkImport = true" class="btn-outline text-xs">导入收藏夹</button>
-        <button @click="showImportExport = true" class="btn-outline text-xs">导入/导出</button>
+        <button @click="openCreateDialog" :disabled="isEnvironmentOperationBusy" class="btn-primary text-xs">新建环境</button>
+        <button @click="openBatchCreate" :disabled="isEnvironmentOperationBusy" class="btn-outline text-xs">批量创建</button>
+        <button @click="openBrowserDataImport" :disabled="isEnvironmentOperationBusy" class="btn-outline text-xs">导入浏览器数据</button>
+        <button @click="openImportExport" :disabled="isEnvironmentOperationBusy" class="btn-outline text-xs">导入/导出</button>
       </div>
 
-      <!-- 筛选和批量操作栏 -->
-      <div class="space-y-3 mb-3">
-        <!-- 第一行：搜索栏 -->
-        <div class="flex items-center gap-3">
-          <div class="relative">
-            <input
-              v-model="searchQuery"
-              type="text"
-              placeholder="搜索环境名称或标签..."
-              class="env-filter-input pr-9"
-            />
-            <button class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600">
-              <SearchIcon class="w-4 h-4" />
-            </button>
-          </div>
+      <!-- 筛选栏 -->
+      <div class="flex items-center gap-3 mb-3">
+        <div class="relative">
+          <SearchIcon class="env-search-icon" />
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="搜索环境名称或标签..."
+            class="env-filter-input"
+          />
+        </div>
+        <div class="env-filter-select-wrap">
           <select v-model="statusFilter" class="env-filter-select">
             <option value="">全部状态</option>
             <option value="running">运行中</option>
             <option value="stopped">已停止</option>
           </select>
-          <div class="flex-1"></div>
+          <ChevronDownIcon class="env-filter-select-icon" />
         </div>
-
-        <!-- 第二行：操作按钮 -->
-        <div class="flex items-center gap-2">
-          <div class="toolbar-split" @click.stop>
-            <button
-              @click="batchLaunch"
-              :disabled="!canLaunchSelected"
-              class="action-btn action-btn-start"
-              :title="canLaunchSelected ? `启动 ${selectedStoppedCount} 个已停止环境` : '请选择已停止环境'"
-            >
-              启动
-            </button>
-            <button
-              @click="toggleToolbarLaunchMenu"
-              :disabled="!canLaunchSelected"
-              class="toolbar-split__toggle toolbar-split__toggle--start"
-              :class="{ 'toolbar-split__toggle--open': activeMenuKey === 'toolbar-launch' }"
-              title="更多启动方式"
-              aria-label="更多启动方式"
-            >
-              <span class="toolbar-split__caret"></span>
-            </button>
-            <div v-if="activeMenuKey === 'toolbar-launch'" class="row-menu row-menu--compact">
-              <button
-                @click="batchLaunch"
-                class="row-menu__item"
-              >
-                普通启动
-              </button>
-              <button
-                @click="batchDebugLaunch"
-                class="row-menu__item row-menu__item--debug"
-              >
-                调试启动
-              </button>
-            </div>
-          </div>
-          <button
-            @click="batchClose"
-            :disabled="!canStopSelected"
-            class="action-btn action-btn-stop"
-            :title="canStopSelected ? `关闭 ${selectedRunningCount} 个运行中环境` : '请选择运行中的环境'"
-          >
-            关闭
-          </button>
-          <div class="toolbar-split" @click.stop>
-            <button
-              @click="batchCreateDesktopShortcuts('standard')"
-              :disabled="!canCreateShortcutSelected"
-              class="action-btn action-btn-shortcut"
-              :title="canCreateShortcutSelected ? `为 ${selectionCount} 个已选环境创建普通启动快捷方式` : '请选择环境'"
-            >
-              创建桌面快捷方式
-            </button>
-            <button
-              @click="toggleToolbarShortcutMenu"
-              :disabled="!canCreateShortcutSelected"
-              class="toolbar-split__toggle"
-              :class="{ 'toolbar-split__toggle--open': activeMenuKey === 'toolbar-shortcut' }"
-              title="更多快捷方式选项"
-              aria-label="更多快捷方式选项"
-            >
-              <span class="toolbar-split__caret"></span>
-            </button>
-            <div v-if="activeMenuKey === 'toolbar-shortcut'" class="row-menu">
-              <button
-                @click="batchCreateDesktopShortcuts('standard')"
-                class="row-menu__item"
-              >
-                创建普通启动快捷方式
-              </button>
-              <button
-                @click="batchCreateDesktopShortcuts('cdp')"
-                class="row-menu__item row-menu__item--debug"
-              >
-                创建调试启动快捷方式
-              </button>
-            </div>
-          </div>
-          <div class="flex-1"></div>
-          <button
-            @click="batchDelete"
-            :disabled="!canDeleteSelected"
-            class="action-btn action-btn-delete"
-            :title="canDeleteSelected ? `删除 ${selectionCount} 个环境` : '请选择要删除的环境'"
-          >
-            删除
-          </button>
-        </div>
+        <div class="flex-1"></div>
       </div>
 
-      <!-- P2: 表格 -->
-      <div>
-        <table v-if="filteredEnvironments.length > 0" class="w-full text-sm bg-white rounded-lg border border-slate-200" role="grid">
+      <ListSurface
+        :has-items="filteredEnvironments.length > 0"
+        :row-menu-open="isRowMenuOpen"
+      >
+        <!-- 批量操作栏 -->
+        <template #toolbar>
+          <div class="flex items-center gap-2">
+            <label class="select-all-control">
+              <input type="checkbox" :checked="allSelected" @change="toggleAll" />
+              <span>全选</span>
+            </label>
+            <SplitIconButton
+              size="toolbar"
+              variant="start"
+              main-label="启动"
+              toggle-title="更多启动方式"
+              menu-class="row-menu--compact row-menu--toolbar"
+              :disabled="!canLaunchSelected"
+              :open="activeMenuKey === 'toolbar-launch'"
+              @main-click="batchLaunch"
+              @toggle-click="toggleToolbarLaunchMenu"
+            >
+              <template #main-icon>
+                <PlayIcon />
+              </template>
+              <template #toggle-icon>
+                <ChevronDownIcon />
+              </template>
+              <template #menu>
+                <button
+                  @click="batchLaunch"
+                  class="row-menu__item"
+                >
+                  普通启动
+                </button>
+                <button
+                  @click="batchDebugLaunch"
+                  class="row-menu__item row-menu__item--debug"
+                >
+                  调试启动
+                </button>
+              </template>
+            </SplitIconButton>
+              <button
+                @click="batchClose"
+                :disabled="!canStopSelected"
+                class="action-btn action-btn-stop"
+                aria-label="关闭"
+                :data-label="'关闭'"
+              >
+                <PowerIcon class="action-btn__icon" />
+              </button>
+            <SplitIconButton
+              size="toolbar"
+              variant="shortcut"
+              main-label="创建桌面快捷方式"
+              toggle-title="更多快捷方式选项"
+              menu-class="row-menu--toolbar"
+              :disabled="!canCreateShortcutSelected"
+              :open="activeMenuKey === 'toolbar-shortcut'"
+              @main-click="batchCreateDesktopShortcuts('standard')"
+              @toggle-click="toggleToolbarShortcutMenu"
+            >
+              <template #main-icon>
+                <MonitorUpIcon />
+              </template>
+              <template #toggle-icon>
+                <ChevronDownIcon />
+              </template>
+              <template #menu>
+                <button
+                  @click="batchCreateDesktopShortcuts('standard')"
+                  class="row-menu__item"
+                >
+                  创建普通启动快捷方式
+                </button>
+                <button
+                  @click="batchCreateDesktopShortcuts('cdp')"
+                  class="row-menu__item row-menu__item--debug"
+                >
+                  创建调试启动快捷方式
+                </button>
+              </template>
+            </SplitIconButton>
+            <div class="flex-1"></div>
+            <button
+              @click="batchDelete"
+              :disabled="!canDeleteSelected"
+              class="action-btn action-btn-delete"
+              aria-label="删除"
+              :data-label="'删除'"
+            >
+              <TrashIcon class="action-btn__icon" />
+            </button>
+          </div>
+        </template>
+
+        <!-- P2: 表格 -->
+        <table class="w-full text-sm border-separate border-spacing-0" role="grid">
           <thead>
-            <tr class="bg-slate-50 border-b border-slate-200">
-              <th class="h-10 w-10 text-center px-3">
-                <input type="checkbox" :checked="allSelected" @change="toggleAll" />
-              </th>
-              <th class="h-10 w-14 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">编号</th>
-              <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">名称</th>
-              <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">状态</th>
-              <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">代理</th>
-              <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">最后使用</th>
-              <th class="h-10 text-center px-4 font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">操作</th>
+            <tr>
+              <th class="list-table-head w-24 rounded-tl-lg">编号</th>
+              <th class="list-table-head">名称</th>
+              <th class="list-table-head">状态</th>
+              <th class="list-table-head">代理</th>
+              <th class="list-table-head rounded-tr-lg">最后使用</th>
             </tr>
           </thead>
           <tbody>
             <tr
               v-for="(env, index) in paginatedEnvironments"
               :key="env.id"
-              class="border-b border-slate-100 hover:bg-slate-50 transition-colors"
-              :class="{ 'bg-blue-50/60': isSelected(env.id) }"
+              class="list-table-row transition-colors"
+              :class="{
+                'list-table-row--selected': isSelected(env.id),
+                'list-table-row--actions-open': isRowActionMenuOpen(env.id),
+              }"
             >
-              <td class="py-2.5 px-3 text-center"><input type="checkbox" :checked="isSelected(env.id)" @change="toggleSelection(env.id)" /></td>
-              <td class="py-2.5 px-4 text-center text-xs font-medium text-slate-500">{{ rowNumber(index) }}</td>
-              <td class="py-2.5 px-4 font-medium text-slate-700 text-center">{{ env.name }}</td>
+              <td class="py-2.5 px-4 text-center">
+                <div class="flex items-center justify-center gap-3">
+                  <input type="checkbox" :checked="isSelected(env.id)" @change="toggleSelection(env.id)" />
+                  <span class="text-xs font-medium text-slate-500">{{ rowNumber(index) }}</span>
+                </div>
+              </td>
+              <td class="py-2.5 px-4 text-slate-700 text-center">{{ env.name }}</td>
               <td class="py-2.5 px-4 text-center">
                 <span class="text-[11px] px-2 py-0.5 rounded-full font-medium"
                   :class="statusBadgeClass(env.status)"
                 >{{ statusLabel(env.status) }}</span>
               </td>
               <td class="py-2.5 px-4 text-slate-500 text-xs text-center">{{ proxyLabel(env) }}</td>
-              <td class="py-2.5 px-4 text-slate-400 text-xs text-center">{{ formatTime(env.lastUsed) }}</td>
-              <td class="py-2.5 px-4 text-center">
-                <div class="flex items-center justify-center gap-1">
+              <td class="relative py-2.5 px-4 text-slate-400 text-xs text-center">
+                <span>{{ formatTime(env.lastUsed) }}</span>
+                <div class="floating-row-actions">
                   <template v-if="env.status === 'running'">
                     <button @click.stop="minimizeEnv(env.id)"
-                      class="ghost-btn" title="最小化">最小化</button>
+                      class="ghost-btn" aria-label="最小化" :data-label="'最小化'">
+                      <MinimizeIcon class="row-action-icon" />
+                    </button>
                     <button @click.stop="maximizeEnv(env.id)"
-                      class="ghost-btn" title="最大化">最大化</button>
+                      class="ghost-btn" aria-label="最大化" :data-label="'最大化'">
+                      <MaximizeIcon class="row-action-icon" />
+                    </button>
                     <button @click.stop="closeEnv(env.id)"
-                      class="ghost-btn" title="关闭">关闭</button>
+                      class="ghost-btn ghost-btn--stop" aria-label="关闭" :data-label="'关闭'">
+                      <PowerIcon class="row-action-icon" />
+                    </button>
+                    <button @click.stop="openCookieManager(env)"
+                      class="ghost-btn" aria-label="Cookie管理" :data-label="'Cookie'">
+                      <CookieIcon class="row-action-icon" />
+                    </button>
                   </template>
                   <template v-else>
-                    <div class="row-split" @click.stop>
-                      <button
-                        @click.stop="launchEnv(env.id)"
-                        class="row-split__main row-split__main--start"
-                        title="普通启动"
-                      >
-                        启动
-                      </button>
-                      <button
-                        @click.stop="toggleLaunchMenu(env.id)"
-                        class="row-split__toggle row-split__toggle--start"
-                        :class="{ 'row-split__toggle--open': activeMenuKey === `launch:${env.id}` }"
-                        title="更多启动方式"
-                        aria-label="更多启动方式"
-                      >
-                        <span class="row-split__caret"></span>
-                      </button>
-                      <div v-if="activeMenuKey === `launch:${env.id}`" class="row-menu row-menu--compact">
+                    <SplitIconButton
+                      size="row"
+                      variant="start"
+                      main-label="启动"
+                      main-aria-label="普通启动"
+                      toggle-title="更多启动方式"
+                      menu-class="row-menu--compact"
+                      :open="activeMenuKey === `launch:${env.id}`"
+                      @main-click="launchEnv(env.id)"
+                      @toggle-click="toggleLaunchMenu(env.id)"
+                    >
+                      <template #main-icon>
+                        <PlayIcon />
+                      </template>
+                      <template #toggle-icon>
+                        <ChevronDownIcon />
+                      </template>
+                      <template #menu>
                         <button
                           @click.stop="launchEnv(env.id)"
                           class="row-menu__item"
@@ -203,46 +221,47 @@
                         >
                           调试启动
                         </button>
-                      </div>
-                    </div>
-                    <div class="row-split" @click.stop>
-                      <button
-                        @click.stop="createDesktopShortcut(env.id, 'standard')"
-                        class="row-split__main row-split__main--shortcut"
-                        title="创建桌面快捷方式"
-                      >
-                        创建桌面快捷方式
-                      </button>
-                      <button
-                        @click.stop="toggleShortcutMenu(env.id)"
-                        class="row-split__toggle row-split__toggle--shortcut"
-                        :class="{ 'row-split__toggle--open': activeMenuKey === `shortcut:${env.id}` }"
-                        title="更多快捷方式选项"
-                        aria-label="更多快捷方式选项"
-                      >
-                        <span class="row-split__caret"></span>
-                      </button>
-                      <div v-if="activeMenuKey === `shortcut:${env.id}`" class="row-menu">
-                      <button
-                        @click.stop="createDesktopShortcut(env.id, 'standard')"
-                        class="row-menu__item"
-                      >
-                        创建普通启动快捷方式
-                      </button>
-                      <button
-                        @click.stop="createDesktopShortcut(env.id, 'cdp')"
-                        class="row-menu__item row-menu__item--debug"
-                      >
-                        创建调试启动快捷方式
-                      </button>
-                    </div>
-                  </div>
+                      </template>
+                    </SplitIconButton>
+                    <SplitIconButton
+                      size="row"
+                      variant="shortcut"
+                      main-label="创建桌面快捷方式"
+                      toggle-title="更多快捷方式选项"
+                      :open="activeMenuKey === `shortcut:${env.id}`"
+                      @main-click="createDesktopShortcut(env.id, 'standard')"
+                      @toggle-click="toggleShortcutMenu(env.id)"
+                    >
+                      <template #main-icon>
+                        <MonitorUpIcon />
+                      </template>
+                      <template #toggle-icon>
+                        <ChevronDownIcon />
+                      </template>
+                      <template #menu>
+                        <button
+                          @click.stop="createDesktopShortcut(env.id, 'standard')"
+                          class="row-menu__item"
+                        >
+                          创建普通启动快捷方式
+                        </button>
+                        <button
+                          @click.stop="createDesktopShortcut(env.id, 'cdp')"
+                          class="row-menu__item row-menu__item--debug"
+                        >
+                          创建调试启动快捷方式
+                        </button>
+                      </template>
+                    </SplitIconButton>
                     <button @click.stop="editEnv(env)"
-                      class="ghost-btn" title="编辑">编辑</button>
-                    <button @click.stop="openCookieManager(env)"
-                      class="ghost-btn" title="Cookie管理">Cookie</button>
+                      class="ghost-btn" aria-label="编辑" :data-label="'编辑'">
+                      <PencilIcon class="row-action-icon" />
+                    </button>
                     <button @click.stop="deleteEnv(env)"
-                      class="ghost-btn" title="删除">删除</button>
+                      :disabled="isEnvironmentOperationBusy"
+                      class="ghost-btn ghost-btn--danger" aria-label="删除" :data-label="'删除'">
+                      <TrashIcon class="row-action-icon" />
+                    </button>
                   </template>
                 </div>
               </td>
@@ -251,18 +270,20 @@
         </table>
 
         <!-- Empty State -->
-        <div v-else class="flex flex-col items-center justify-center py-16 text-slate-400">
+        <template #empty>
           <p>暂无环境</p>
-          <button @click="openCreateDialog" class="mt-3 btn-primary text-xs">创建第一个环境</button>
-        </div>
-      </div>
-      <PaginationBar
-        v-if="filteredEnvironments.length > 0"
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        :total="filteredEnvironments.length"
-        class="mt-3 rounded-lg border border-slate-200"
-      />
+          <button @click="openCreateDialog" :disabled="isEnvironmentOperationBusy" class="mt-3 btn-primary text-xs">创建第一个环境</button>
+        </template>
+        <template #pagination>
+          <PaginationBar
+            v-if="filteredEnvironments.length > 0"
+            v-model:current-page="currentPage"
+            :page-size="pageSize"
+            :total="filteredEnvironments.length"
+            @update:page-size="updatePageSize"
+          />
+        </template>
+      </ListSurface>
     </div>
 
     <!-- EnvironmentEditor 弹窗（单建 + 编辑 + 批量创建统一） -->
@@ -270,19 +291,63 @@
       v-if="showEditor"
       :environment="editingEnvironment"
       :count="batchCreateCount"
+      :saving="isCreatingEnvironments"
       @close="closeEditor"
       @save="saveEnvironment"
     />
 
-    <!-- ImportExportDialog 弹窗 -->
-    <ImportExportDialog v-if="showImportExport" @close="showImportExport = false" @imported="onImported" />
+    <div
+      v-if="isEnvironmentOperationBusy"
+      class="fixed inset-0 z-[60] bg-slate-950/30 backdrop-blur-[1px] flex items-center justify-center cursor-default"
+    >
+      <div class="rounded-lg bg-white px-6 py-5 shadow-xl border border-slate-200 min-w-72 text-center">
+        <div class="mx-auto mb-3 h-9 w-9 rounded-full border-4 border-slate-200 border-t-blue-500 animate-spin"></div>
+        <p class="text-sm font-medium text-slate-700">{{ environmentOperationOverlayTitle }}</p>
+        <template v-if="isImportingBrowserData">
+          <p class="mt-1 text-xs text-slate-500">{{ browserDataImportProgressMessage }}</p>
+          <div class="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div
+              class="h-full rounded-full bg-blue-500 transition-all duration-200"
+              :style="{ width: `${browserDataImportProgressPercent}%` }"
+            ></div>
+          </div>
+          <div class="mt-2 flex items-center justify-between gap-4 text-xs text-slate-500">
+            <span>目标 {{ browserDataImportTargetCount }} 个环境</span>
+            <span>{{ browserDataImportProgressPercent }}%</span>
+          </div>
+        </template>
+        <template v-else-if="isImportExportingEnvironments">
+          <p class="mt-1 text-xs text-slate-500">{{ importExportProgressMessage }}</p>
+          <div class="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div
+              class="h-full rounded-full bg-blue-500 transition-all duration-200"
+              :style="{ width: `${importExportProgressPercent}%` }"
+            ></div>
+          </div>
+          <div class="mt-2 flex items-center justify-between gap-4 text-xs text-slate-500">
+            <span>{{ importExportProgressMeta }}</span>
+            <span>{{ importExportProgressPercent }}%</span>
+          </div>
+        </template>
+        <p v-else class="mt-1 text-xs text-slate-500">已完成 {{ environmentOperationDoneCount }}/{{ environmentOperationTotalCount }}</p>
+      </div>
+    </div>
 
-    <!-- BookmarkImportDialog 弹窗 -->
-    <BookmarkImportDialog
-      v-if="showBookmarkImport"
+    <!-- ImportExportDialog 弹窗 -->
+    <ImportExportDialog
+      v-if="showImportExport"
+      @close="showImportExport = false"
+      @submit-export="startEnvironmentExport"
+      @submit-import="startEnvironmentImport"
+    />
+
+    <!-- BrowserDataImportDialog 弹窗 -->
+    <BrowserDataImportDialog
+      v-if="showBrowserDataImport"
       :initial-selected-ids="selectedIds"
-      @close="showBookmarkImport = false"
-      @imported="onBookmarksImported"
+      :initial-result="browserDataImportResultState"
+      @close="closeBrowserDataImport"
+      @import="startBrowserDataImport"
     />
 
     <!-- CookieManager 弹窗 -->
@@ -310,32 +375,152 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useStore } from 'vuex'
-import type { Environment } from '@/types'
+import type { Environment, FingerprintConfig } from '@/types'
 import GroupSidebar from '@/components/layout/GroupSidebar.vue'
 import EnvironmentEditor from '@/components/EnvironmentEditor.vue'
 import ImportExportDialog from '@/components/ImportExportDialog.vue'
-import BookmarkImportDialog from '@/components/BookmarkImportDialog.vue'
+import BrowserDataImportDialog from '@/components/BrowserDataImportDialog.vue'
 import CookieManager from '@/components/CookieManager.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import ListSurface from '@/components/common/ListSurface.vue'
 import PaginationBar from '@/components/common/PaginationBar.vue'
+import SplitIconButton from '@/components/common/SplitIconButton.vue'
 import { toast } from '@/utils/toast'
-// @ts-ignore - Search icon exists in runtime but types are missing
-import { Search } from 'lucide-vue-next'
+import {
+  ChevronDownIcon,
+  CookieIcon,
+  MinusIcon as MinimizeIcon,
+  MonitorUpIcon,
+  PencilIcon,
+  PlayIcon,
+  PowerIcon,
+  SearchIcon,
+  SquareIcon as MaximizeIcon,
+  Trash2Icon as TrashIcon,
+} from 'lucide-vue-next'
 
 const store = useStore()
+type EnvironmentCreateDraft = Partial<Environment> & { __randomFingerprint?: boolean }
+type EnvironmentStatus = Environment['status']
+type LaunchMode = 'standard' | 'cdp'
+type BrowserDataImportProgressPhase = 'preparing' | 'bookmarks' | 'cookies' | 'finalizing' | 'done' | 'failed'
+type ImportExportOperationMode = 'import' | 'export'
+type ImportExportProgressPhase = 'processing' | 'done' | 'failed'
+
+interface EnvironmentSettings {
+  environmentPageSize?: number
+}
+
+interface UiState {
+  currentGroupId?: string | null
+  selectedEnvIds?: string[]
+}
+
+interface BrowserDataImportRequest {
+  sourceType: 'chrome' | 'edge'
+  sourceProfileName?: string
+  envIds: string[]
+  dataTypes: string[]
+}
+
+interface BrowserDataImportResult {
+  importedEnvironments: number
+  totalEnvironments: number
+  folderCount: number
+  urlCount: number
+  cookieCount: number
+  skippedRunning: string[]
+  failed: Array<{ envId: string; reason: string }>
+}
+
+interface BrowserDataImportProgress {
+  taskId: string
+  phase: BrowserDataImportProgressPhase
+  percent: number
+  message: string
+  completedSteps: number
+  totalSteps: number
+}
+
+interface ImportExportOperationPayload {
+  taskId: string
+  mode: ImportExportOperationMode
+  total: number
+}
+
+interface EnvironmentExportRequest {
+  envIds: string[]
+  cookiePassword?: string
+}
+
+interface EnvironmentImportRequest {
+  cookiePassword?: string
+}
+
+interface ImportExportProgress {
+  taskId: string
+  mode: ImportExportOperationMode
+  phase: ImportExportProgressPhase
+  percent: number
+  message: string
+  completedSteps: number
+  totalSteps: number
+}
+
+interface EnvironmentImportResult {
+  environments: Array<{ id: string; name: string; renamed?: boolean }>
+  plugins: Array<{ id: string; name: string; skipped: boolean }>
+}
+
+type BrowserDataImportResultStatus = 'success' | 'partial' | 'failed'
+
+interface BrowserDataImportResultState {
+  status: BrowserDataImportResultStatus
+  title: string
+  message: string
+  result: BrowserDataImportResult | null
+  failures: Array<{ envId: string; reason: string }>
+}
+
+const DEFAULT_PAGE_SIZE = 10
+const PAGE_SIZE_OPTIONS = [0, 10, 20, 50, 100] as const
+
 const searchQuery = ref('')
 const statusFilter = ref('')
 const showEditor = ref(false)
 const editingEnvironment = ref<Environment | null>(null)
 const batchCreateCount = ref(1)
+const isCreatingEnvironments = ref(false)
+const creatingEnvironmentCount = ref(0)
+const createdEnvironmentCount = ref(0)
+const isDeletingEnvironments = ref(false)
+const deletingEnvironmentCount = ref(0)
+const deletedEnvironmentCount = ref(0)
+const isImportingBrowserData = ref(false)
+const browserDataImportTaskId = ref('')
+const browserDataImportTargetCount = ref(0)
+const browserDataImportProgress = ref<BrowserDataImportProgress | null>(null)
+const browserDataImportResultState = ref<BrowserDataImportResultState | null>(null)
+const isImportExportingEnvironments = ref(false)
+const importExportTaskId = ref('')
+const importExportMode = ref<ImportExportOperationMode>('export')
+const importExportTargetCount = ref(0)
+const importExportProgress = ref<ImportExportProgress | null>(null)
 const showImportExport = ref(false)
-const showBookmarkImport = ref(false)
+const showBrowserDataImport = ref(false)
 const showCookieManager = ref(false)
 const cookieEnv = ref<Environment | null>(null)
 const showDeleteConfirm = ref(false)
 const deletingEnv = ref<Environment | null>(null)
 const currentPage = ref(1)
+const pageSize = ref(10)
 const activeMenuKey = ref<string | null>(null)
+const isRowMenuOpen = computed(() => {
+  const key = activeMenuKey.value
+  return key?.startsWith('launch:') === true || key?.startsWith('shortcut:') === true
+})
+let browserDataImportProgressHandler: ((...args: unknown[]) => void) | null = null
+let importExportProgressHandler: ((...args: unknown[]) => void) | null = null
 
 function closeInlineMenu() {
   activeMenuKey.value = null
@@ -349,47 +534,100 @@ onMounted(() => {
   store.dispatch('settings/fetch')
   store.dispatch('environments/fetchAll')
   store.dispatch('groups/fetchAll')
+  browserDataImportProgressHandler = window.electronAPI.onAppEvent('browser-data-import-progress', handleBrowserDataImportProgress)
+  importExportProgressHandler = window.electronAPI.onAppEvent('environment-import-export-progress', handleImportExportProgress)
   window.addEventListener('click', handleWindowClick)
 })
 
 onBeforeUnmount(() => {
+  if (browserDataImportProgressHandler) {
+    window.electronAPI.offAppEvent('browser-data-import-progress', browserDataImportProgressHandler)
+    browserDataImportProgressHandler = null
+  }
+  if (importExportProgressHandler) {
+    window.electronAPI.offAppEvent('environment-import-export-progress', importExportProgressHandler)
+    importExportProgressHandler = null
+  }
   window.removeEventListener('click', handleWindowClick)
 })
 
 // --- Data ---
-const environments = computed(() => (store.state.environments as any)?.list || [])
-const settings = computed(() => (store.state.settings as any)?.data || {})
-const currentGroupId = computed(() => (store.state.ui as any)?.currentGroupId)
-const pageSize = computed({
-  get: () => normalizePageSize(settings.value.environmentPageSize),
-  set: (nextSize: number) => {
-    currentPage.value = 1
-    void store.dispatch('settings/save', { environmentPageSize: normalizePageSize(nextSize) })
-  },
-})
-const selectedIds = computed<string[]>(() => (store.state.ui as any)?.selectedEnvIds || [])
+const environments = computed<Environment[]>(() => (store.state.environments as { list?: Environment[] })?.list ?? [])
+const settings = computed<EnvironmentSettings>(() => (store.state.settings as { data?: EnvironmentSettings })?.data ?? {})
+const uiState = computed<UiState>(() => store.state.ui as UiState)
+const currentGroupId = computed(() => uiState.value.currentGroupId)
+const selectedIds = computed<string[]>(() => uiState.value.selectedEnvIds ?? [])
+const selectedIdSet = computed(() => new Set(selectedIds.value))
 const selectionCount = computed(() => selectedIds.value.length)
 const selectedEnvironments = computed(() =>
-  environments.value.filter((e: any) => selectedIds.value.includes(e.id))
+  environments.value.filter((env) => selectedIdSet.value.has(env.id))
 )
 const selectedRunning = computed(() =>
-  selectedEnvironments.value.filter((e: any) => e.status === 'running')
+  selectedEnvironments.value.filter((env) => env.status === 'running')
 )
 const selectedStopped = computed(() =>
-  selectedEnvironments.value.filter((e: any) => e.status === 'stopped')
+  selectedEnvironments.value.filter((env) => env.status === 'stopped')
 )
 const selectedRunningCount = computed(() => selectedRunning.value.length)
 const selectedStoppedCount = computed(() => selectedStopped.value.length)
-const canCreateShortcutSelected = computed(() => selectionCount.value > 0)
-const canLaunchSelected = computed(() => selectedStoppedCount.value > 0)
-const canStopSelected = computed(() => selectedRunningCount.value > 0)
-const canDeleteSelected = computed(() => selectionCount.value > 0)
-const selectionSummary = computed(() => {
-  if (selectionCount.value === 0) return '未选择环境'
-  return `已选择 ${selectionCount.value} 个环境`
+const isEnvironmentOperationBusy = computed(() =>
+  isCreatingEnvironments.value ||
+  isDeletingEnvironments.value ||
+  isImportingBrowserData.value ||
+  isImportExportingEnvironments.value
+)
+const canCreateShortcutSelected = computed(() => selectionCount.value > 0 && !isEnvironmentOperationBusy.value)
+const canLaunchSelected = computed(() => selectedStoppedCount.value > 0 && !isEnvironmentOperationBusy.value)
+const canStopSelected = computed(() => selectedRunningCount.value > 0 && !isEnvironmentOperationBusy.value)
+const canDeleteSelected = computed(() => selectionCount.value > 0 && !isEnvironmentOperationBusy.value)
+const environmentOperationOverlayTitle = computed(() => {
+  if (isImportExportingEnvironments.value) {
+    return importExportMode.value === 'export'
+      ? '正在导出环境...'
+      : '正在导入环境...'
+  }
+  if (isImportingBrowserData.value) {
+    return '正在导入浏览器数据...'
+  }
+  if (isDeletingEnvironments.value) {
+    return deletingEnvironmentCount.value > 1
+      ? `正在删除 ${deletingEnvironmentCount.value} 个环境...`
+      : '正在删除环境...'
+  }
+  if (editingEnvironment.value) {
+    return '正在保存环境...'
+  }
+  return creatingEnvironmentCount.value > 1
+    ? `正在创建 ${creatingEnvironmentCount.value} 个环境...`
+    : '正在创建环境...'
+})
+const environmentOperationDoneCount = computed(() =>
+  isDeletingEnvironments.value ? deletedEnvironmentCount.value : createdEnvironmentCount.value
+)
+const environmentOperationTotalCount = computed(() =>
+  isDeletingEnvironments.value ? deletingEnvironmentCount.value : creatingEnvironmentCount.value
+)
+const browserDataImportProgressPercent = computed(() => {
+  const percent = browserDataImportProgress.value?.percent ?? (isImportingBrowserData.value ? 3 : 0)
+  return Math.min(100, Math.max(0, Math.round(percent)))
+})
+const browserDataImportProgressMessage = computed(() => browserDataImportProgress.value?.message || '正在准备导入...')
+const importExportProgressPercent = computed(() => {
+  const percent = importExportProgress.value?.percent ?? (isImportExportingEnvironments.value ? 3 : 0)
+  return Math.min(100, Math.max(0, Math.round(percent)))
+})
+const importExportProgressMessage = computed(() =>
+  importExportProgress.value?.message ||
+  (importExportMode.value === 'export' ? '正在准备导出...' : '正在准备导入...')
+)
+const importExportProgressMeta = computed(() => {
+  if (importExportMode.value === 'export') {
+    return `目标 ${importExportTargetCount.value} 个环境`
+  }
+  return '正在处理 ZIP 文件'
 })
 const allSelected = computed(
-  () => paginatedEnvironments.value.length > 0 && paginatedEnvironments.value.every((e: any) => selectedIds.value.includes(e.id))
+  () => paginatedEnvironments.value.length > 0 && paginatedEnvironments.value.every((env) => selectedIdSet.value.has(env.id))
 )
 const deleteConfirmMessage = computed(() => {
   if (deletingEnv.value) {
@@ -399,33 +637,39 @@ const deleteConfirmMessage = computed(() => {
 })
 
 const filteredEnvironments = computed(() => {
-  let result = environments.value
+  let result: Environment[] = environments.value
   const groupId = currentGroupId.value
 
   // 分组筛选
   if (groupId !== undefined && groupId !== null && groupId !== '') {
-    result = result.filter((e: any) => e.groupId === groupId)
+    result = result.filter((env) => env.groupId === groupId)
   } else if (groupId === '') {
     // "未分组"
-    result = result.filter((e: any) => !e.groupId || e.groupId === '')
+    result = result.filter((env) => !env.groupId || env.groupId === '')
   }
 
   // 状态筛选
-  if (statusFilter.value) result = result.filter((e: any) => e.status === statusFilter.value)
+  if (isEnvironmentStatus(statusFilter.value)) {
+    result = result.filter((env) => env.status === statusFilter.value)
+  }
 
   // 搜索筛选
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.toLowerCase()
-    result = result.filter((e: any) =>
-      e.name.toLowerCase().includes(q) ||
-      (e.tags || []).some((t: string) => t.toLowerCase().includes(q))
+  const q = searchQuery.value.trim().toLowerCase()
+  if (q) {
+    result = result.filter((env) =>
+      env.name.toLowerCase().includes(q) ||
+      (env.tags ?? []).some((tag) => tag.toLowerCase().includes(q))
     )
   }
 
   return result
 })
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredEnvironments.value.length / pageSize.value)))
+const totalPages = computed(() => {
+  if (pageSize.value === 0) return 1
+  return Math.max(1, Math.ceil(filteredEnvironments.value.length / pageSize.value))
+})
 const paginatedEnvironments = computed(() => {
+  if (pageSize.value === 0) return filteredEnvironments.value
   const start = (currentPage.value - 1) * pageSize.value
   return filteredEnvironments.value.slice(start, start + pageSize.value)
 })
@@ -434,35 +678,56 @@ watch([searchQuery, statusFilter, currentGroupId], () => {
   currentPage.value = 1
 })
 
+watch(
+  () => settings.value.environmentPageSize,
+  (nextSize) => {
+    pageSize.value = normalizePageSize(nextSize)
+  },
+  { immediate: true }
+)
+
 watch([totalPages, pageSize], () => {
   if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
   if (currentPage.value < 1) currentPage.value = 1
 }, { immediate: true })
 
 // --- Actions ---
-function isSelected(id: string): boolean { return selectedIds.value.includes(id) }
+function isSelected(id: string): boolean { return selectedIdSet.value.has(id) }
 function toggleSelection(id: string): void { store.commit('ui/TOGGLE_ENV_SELECTION', id) }
 function toggleAll(): void {
-  if (allSelected.value) paginatedEnvironments.value.forEach((e: any) => store.commit('ui/DESELECT_ENV', e.id))
-  else paginatedEnvironments.value.forEach((e: any) => store.commit('ui/SELECT_ENV', e.id))
+  if (allSelected.value) paginatedEnvironments.value.forEach((env) => store.commit('ui/DESELECT_ENV', env.id))
+  else paginatedEnvironments.value.forEach((env) => store.commit('ui/SELECT_ENV', env.id))
 }
 
-async function launchEnv(id: string) {
+async function launchEnvironment(id: string, launchMode: LaunchMode) {
   closeInlineMenu()
-  await store.dispatch('environments/launch', { envId: id, launchMode: 'standard' })
+  try {
+    await store.dispatch('environments/launch', { envId: id, launchMode })
+  } catch (error) {
+    console.error('[launchEnvironment] error:', error)
+    toast.error(readErrorMessage(error, '启动环境失败'))
+  }
+}
+async function launchEnv(id: string) {
+  await launchEnvironment(id, 'standard')
 }
 async function debugLaunchEnv(id: string) {
-  closeInlineMenu()
-  await store.dispatch('environments/launch', { envId: id, launchMode: 'cdp' })
+  await launchEnvironment(id, 'cdp')
 }
 async function closeEnv(id: string) {
-  await store.dispatch('environments/close', id)
+  try {
+    await store.dispatch('environments/close', id)
+  } catch (error) {
+    console.error('[closeEnv] error:', error)
+    toast.error(readErrorMessage(error, '关闭环境失败'))
+  }
 }
 async function minimizeEnv(id: string) {
   try {
     await window.electronAPI.invoke('windows-minimize', { envIds: [id] })
   } catch (e) {
     console.error('[minimizeEnv] error:', e)
+    toast.error(readErrorMessage(e, '最小化窗口失败'))
   }
 }
 async function maximizeEnv(id: string) {
@@ -470,14 +735,16 @@ async function maximizeEnv(id: string) {
     await window.electronAPI.invoke('windows-maximize', { envIds: [id] })
   } catch (e) {
     console.error('[maximizeEnv] error:', e)
+    toast.error(readErrorMessage(e, '最大化窗口失败'))
   }
 }
-function editEnv(env: any) {
+function editEnv(env: Environment) {
   closeInlineMenu()
   editingEnvironment.value = env
   showEditor.value = true
 }
-async function deleteEnv(env: any) {
+async function deleteEnv(env: Environment) {
+  if (isEnvironmentOperationBusy.value) return
   if (env.status === 'running') {
     toast.error('请先关闭环境再删除')
     return
@@ -505,7 +772,11 @@ function toggleToolbarLaunchMenu() {
   activeMenuKey.value = activeMenuKey.value === key ? null : key
 }
 
-async function createDesktopShortcut(id: string, launchMode: 'standard' | 'cdp' = 'standard') {
+function isRowActionMenuOpen(id: string) {
+  return activeMenuKey.value === `launch:${id}` || activeMenuKey.value === `shortcut:${id}`
+}
+
+async function createDesktopShortcut(id: string, launchMode: LaunchMode = 'standard') {
   try {
     closeInlineMenu()
     const shortcutPath = await window.electronAPI.invoke<string>('create-desktop-shortcut', {
@@ -515,14 +786,15 @@ async function createDesktopShortcut(id: string, launchMode: 'standard' | 'cdp' 
     toast.success(`已创建桌面快捷方式：${shortcutPath}`)
   } catch (error) {
     console.error('[createDesktopShortcut] error:', error)
-    toast.error(error instanceof Error ? error.message : '创建桌面快捷方式失败')
+    toast.error(readErrorMessage(error, '创建桌面快捷方式失败'))
   }
 }
 
-async function batchCreateDesktopShortcuts(launchMode: 'standard' | 'cdp' = 'standard') {
+async function batchCreateDesktopShortcuts(launchMode: LaunchMode = 'standard') {
   const ids = [...selectedIds.value]
-  if (ids.length === 0) return
+  if (ids.length === 0 || isEnvironmentOperationBusy.value) return
 
+  let completedCount = 0
   try {
     closeInlineMenu()
     for (const id of ids) {
@@ -530,79 +802,444 @@ async function batchCreateDesktopShortcuts(launchMode: 'standard' | 'cdp' = 'sta
         envId: id,
         launchMode,
       })
+      completedCount += 1
     }
-    toast.success(`已为 ${ids.length} 个环境创建桌面快捷方式`)
+    toast.success(`已为 ${completedCount} 个环境创建桌面快捷方式`)
   } catch (error) {
     console.error('[batchCreateDesktopShortcuts] error:', error)
-    toast.error(error instanceof Error ? error.message : '批量创建桌面快捷方式失败')
+    toast.error(completedCount > 0
+      ? `已创建 ${completedCount}/${ids.length} 个快捷方式，${readErrorMessage(error, '剩余快捷方式创建失败')}`
+      : readErrorMessage(error, '批量创建桌面快捷方式失败')
+    )
   }
 }
 function openBatchCreate() {
+  if (isEnvironmentOperationBusy.value) return
   editingEnvironment.value = null
   batchCreateCount.value = 5  // 默认批量 5 个
   showEditor.value = true
 }
 function openCreateDialog() {
+  if (isEnvironmentOperationBusy.value) return
   editingEnvironment.value = null
   batchCreateCount.value = 1
   showEditor.value = true
 }
-function closeEditor() { showEditor.value = false; editingEnvironment.value = null; batchCreateCount.value = 1 }
-async function saveEnvironment(data: Partial<Environment> | Array<Partial<Environment>>) {
-  if (Array.isArray(data)) {
-    // 批量创建
-    for (const env of data) await store.dispatch('environments/create', env)
-  } else if (editingEnvironment.value) {
-    await store.dispatch('environments/update', { ...editingEnvironment.value, ...data })
-  } else {
-    await store.dispatch('environments/create', data)
-  }
-  closeEditor()
+
+function openBrowserDataImport() {
+  if (isEnvironmentOperationBusy.value) return
+  browserDataImportResultState.value = null
+  showBrowserDataImport.value = true
 }
 
-function openCookieManager(env: any) {
+function closeBrowserDataImport() {
+  showBrowserDataImport.value = false
+  browserDataImportResultState.value = null
+}
+
+function closeEditor() { showEditor.value = false; editingEnvironment.value = null; batchCreateCount.value = 1 }
+async function saveEnvironment(data: Partial<Environment> | Array<Partial<Environment>>) {
+  if (isEnvironmentOperationBusy.value) return
+
+  const isBatchCreate = Array.isArray(data)
+  const total = isBatchCreate ? data.length : 1
+  const editing = editingEnvironment.value
+  if (total === 0) {
+    toast.error('没有可创建的环境')
+    return
+  }
+
+  if (isBatchCreate) closeEditor()
+  isCreatingEnvironments.value = true
+  creatingEnvironmentCount.value = total
+  createdEnvironmentCount.value = 0
+
+  try {
+    if (isBatchCreate) {
+      for (const env of data) {
+        await store.dispatch('environments/create', await prepareEnvironmentCreateDraft(env as EnvironmentCreateDraft))
+        createdEnvironmentCount.value += 1
+      }
+      toast.success(`已创建 ${createdEnvironmentCount.value} 个环境`)
+    } else if (editing) {
+      await store.dispatch('environments/update', { ...editing, ...data })
+      createdEnvironmentCount.value = 1
+      toast.success('环境已保存')
+      closeEditor()
+    } else {
+      await store.dispatch('environments/create', data)
+      createdEnvironmentCount.value = 1
+      toast.success('已创建 1 个环境')
+      closeEditor()
+    }
+  } catch (error) {
+    console.error('[saveEnvironment] error:', error)
+    toast.error(readErrorMessage(error, '环境保存失败'))
+  } finally {
+    isCreatingEnvironments.value = false
+    creatingEnvironmentCount.value = 0
+    createdEnvironmentCount.value = 0
+  }
+}
+
+async function prepareEnvironmentCreateDraft(env: EnvironmentCreateDraft): Promise<Partial<Environment>> {
+  const { __randomFingerprint, ...draft } = env
+  if (!__randomFingerprint) return draft
+
+  try {
+    const generated = await window.electronAPI.invoke<{
+      platform: string
+      brand: string
+      hardwareConcurrency: number
+      platformVersion: string
+      brandVersion: string
+    }>('generate-fingerprint')
+
+    const fingerprint: FingerprintConfig = {
+      ...(draft.fingerprint as FingerprintConfig),
+      platform: generated.platform as FingerprintConfig['platform'],
+      brand: generated.brand as FingerprintConfig['brand'],
+      hardwareConcurrency: Math.max(4, generated.hardwareConcurrency),
+      platformVersion: generated.platformVersion,
+      brandVersion: generated.brandVersion,
+    }
+    return { ...draft, fingerprint }
+  } catch (error) {
+    console.warn('[prepareEnvironmentCreateDraft] generateFingerprint failed, using form values:', error)
+    return draft
+  }
+}
+
+function openCookieManager(env: Environment) {
   closeInlineMenu()
+  if (env.status !== 'running') {
+    toast.warning('请先启动环境后再管理 Cookie')
+    return
+  }
   cookieEnv.value = env
   showCookieManager.value = true
 }
 
-/** 导入完成回调 */
-async function onImported(count: number) {
+function openImportExport() {
+  if (isEnvironmentOperationBusy.value) return
+  showImportExport.value = true
+}
+
+function beginImportExportOperation(payload: ImportExportOperationPayload) {
   showImportExport.value = false
-  // 刷新环境列表（import-environments IPC 已写入存储）
-  await store.dispatch('environments/fetchAll')
-}
-
-async function onBookmarksImported(count: number) {
-  if (count > 0) {
-    showBookmarkImport.value = false
+  importExportTaskId.value = payload.taskId
+  importExportMode.value = payload.mode
+  importExportTargetCount.value = payload.total
+  importExportProgress.value = {
+    taskId: payload.taskId,
+    mode: payload.mode,
+    phase: 'processing',
+    percent: 0,
+    message: payload.mode === 'export' ? '正在准备导出...' : '正在准备导入...',
+    completedSteps: 0,
+    totalSteps: 2,
   }
-  await store.dispatch('environments/fetchAll')
+  isImportExportingEnvironments.value = true
 }
-async function batchLaunch() {
-  const toLaunch = selectedStopped.value
-  const alreadyRunning = selectedRunning.value
 
-  if (toLaunch.length === 0) {
+function finishImportExportOperation(taskId: string) {
+  if (!importExportTaskId.value || taskId !== importExportTaskId.value) return
+  isImportExportingEnvironments.value = false
+  importExportTaskId.value = ''
+  importExportTargetCount.value = 0
+  importExportProgress.value = null
+}
+
+async function startEnvironmentExport(request: EnvironmentExportRequest) {
+  if (isEnvironmentOperationBusy.value || request.envIds.length === 0) return
+
+  let filePath = ''
+  try {
+    filePath = await window.electronAPI.invoke<string>('select-export-environments-path')
+  } catch (error) {
+    if (!isImportExportCanceled(error)) {
+      console.error('[startEnvironmentExport] select path error:', error)
+      toast.error(readErrorMessage(error, '选择导出位置失败'))
+    }
     return
   }
 
-  for (const env of toLaunch) await store.dispatch('environments/launch', { envId: env.id, launchMode: 'standard' })
+  const taskId = `environment-export-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  beginImportExportOperation({ taskId, mode: 'export', total: request.envIds.length })
 
-  arrangeLaunchedWindows(toLaunch, alreadyRunning)
+  try {
+    await window.electronAPI.invoke<{ success: boolean; path: string }>('export-environments', {
+      envIds: request.envIds,
+      cookiePassword: request.cookiePassword,
+      taskId,
+      filePath,
+    })
+    store.dispatch('logs/add', {
+      action: 'export',
+      details: `导出 ${request.envIds.length} 个环境`,
+    })
+    toast.success(`已导出 ${request.envIds.length} 个环境`)
+  } catch (error) {
+    if (!isImportExportCanceled(error)) {
+      console.error('[startEnvironmentExport] error:', error)
+      toast.error(readErrorMessage(error, '导出环境失败'))
+    }
+  } finally {
+    finishImportExportOperation(taskId)
+  }
+}
+
+async function startEnvironmentImport(request: EnvironmentImportRequest) {
+  if (isEnvironmentOperationBusy.value) return
+
+  let filePath = ''
+  try {
+    filePath = await window.electronAPI.invoke<string>('select-import-environments-file')
+  } catch (error) {
+    if (!isImportExportCanceled(error)) {
+      console.error('[startEnvironmentImport] select file error:', error)
+      toast.error(readErrorMessage(error, '选择导入文件失败'))
+    }
+    return
+  }
+
+  const taskId = `environment-import-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  beginImportExportOperation({ taskId, mode: 'import', total: 1 })
+
+  try {
+    const result = await window.electronAPI.invoke<EnvironmentImportResult>('import-environments', {
+      cookiePassword: request.cookiePassword,
+      taskId,
+      filePath,
+    })
+    await store.dispatch('environments/fetchAll')
+    store.dispatch('logs/add', {
+      action: 'import',
+      details: `导入 ${result.environments.length} 个环境，${result.plugins.filter((plugin) => !plugin.skipped).length} 个插件`,
+    })
+    toast.success(buildEnvironmentImportSuccessMessage(result))
+  } catch (error) {
+    if (!isImportExportCanceled(error)) {
+      console.error('[startEnvironmentImport] error:', error)
+      toast.error(readErrorMessage(error, '导入环境失败'))
+    }
+  } finally {
+    finishImportExportOperation(taskId)
+  }
+}
+
+async function startBrowserDataImport(request: BrowserDataImportRequest) {
+  if (isEnvironmentOperationBusy.value) return
+  if (request.envIds.length === 0) {
+    toast.error('请选择要导入的环境')
+    return
+  }
+  if (request.dataTypes.length === 0) {
+    toast.error('请选择要导入的数据类型')
+    return
+  }
+
+  showBrowserDataImport.value = false
+  browserDataImportResultState.value = null
+  browserDataImportTaskId.value = `browser-data-import-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  browserDataImportTargetCount.value = request.envIds.length
+  browserDataImportProgress.value = {
+    taskId: browserDataImportTaskId.value,
+    phase: 'preparing',
+    percent: 0,
+    message: '正在准备导入...',
+    completedSteps: 0,
+    totalSteps: 1,
+  }
+  isImportingBrowserData.value = true
+
+  try {
+    const result = await window.electronAPI.invoke<BrowserDataImportResult>('browser-data-import', {
+      ...request,
+      importTaskId: browserDataImportTaskId.value,
+    })
+    await store.dispatch('environments/fetchAll')
+
+    if (isBrowserDataImportFullySuccessful(result)) {
+      toast.success(buildBrowserDataImportSuccessMessage(result, request))
+    } else {
+      browserDataImportResultState.value = buildBrowserDataImportResultState(result, request)
+    }
+  } catch (error) {
+    console.error('[startBrowserDataImport] error:', error)
+    const message = readBrowserDataImportError(error)
+    browserDataImportResultState.value = {
+      status: 'failed',
+      title: '导入失败',
+      message,
+      result: null,
+      failures: [{ envId: 'source', reason: message }],
+    }
+  } finally {
+    isImportingBrowserData.value = false
+    browserDataImportTaskId.value = ''
+    browserDataImportTargetCount.value = 0
+    browserDataImportProgress.value = null
+    if (browserDataImportResultState.value) {
+      showBrowserDataImport.value = true
+    }
+  }
+}
+
+function isBrowserDataImportFullySuccessful(result: BrowserDataImportResult): boolean {
+  return (
+    result.failed.length === 0 &&
+    result.skippedRunning.length === 0 &&
+    result.importedEnvironments === result.totalEnvironments
+  )
+}
+
+function buildBrowserDataImportSuccessMessage(
+  result: BrowserDataImportResult,
+  request: BrowserDataImportRequest,
+): string {
+  const parts = buildBrowserDataImportSummaryParts(result, request)
+  return `已导入到 ${result.importedEnvironments} 个环境${parts.length > 0 ? `，${parts.join('，')}` : ''}`
+}
+
+function buildBrowserDataImportResultState(
+  result: BrowserDataImportResult,
+  request: BrowserDataImportRequest,
+): BrowserDataImportResultState {
+  const failures = buildBrowserDataImportFailures(result)
+  const failedCount = failures.length
+  const parts = buildBrowserDataImportSummaryParts(result, request)
+  const summary = parts.length > 0 ? `，${parts.join('，')}` : ''
+
+  if (result.importedEnvironments === 0 && failedCount > 0) {
+    return {
+      status: 'failed',
+      title: '导入失败',
+      message: `未成功导入环境${summary}，失败 ${failedCount} 项`,
+      result,
+      failures,
+    }
+  }
+
+  if (failedCount > 0) {
+    return {
+      status: 'partial',
+      title: '部分导入完成',
+      message: `已导入到 ${result.importedEnvironments}/${result.totalEnvironments} 个环境${summary}，失败 ${failedCount} 项`,
+      result,
+      failures,
+    }
+  }
+
+  return {
+    status: 'success',
+    title: '导入完成',
+    message: `已导入到 ${result.importedEnvironments} 个环境${summary}`,
+    result,
+    failures,
+  }
+}
+
+function buildBrowserDataImportSummaryParts(
+  result: BrowserDataImportResult,
+  request: BrowserDataImportRequest,
+): string[] {
+  const parts: string[] = []
+  if (request.dataTypes.includes('bookmarks')) parts.push(`链接 ${result.urlCount} 个`)
+  if (request.dataTypes.includes('cookies')) parts.push(`Cookie ${result.cookieCount} 个`)
+  return parts
+}
+
+function buildBrowserDataImportFailures(result: BrowserDataImportResult): Array<{ envId: string; reason: string }> {
+  const failures = [...result.failed]
+  for (const envId of result.skippedRunning) {
+    failures.push({ envId, reason: '环境正在运行，请关闭后再导入' })
+  }
+  return failures
+}
+
+function handleBrowserDataImportProgress(data: unknown) {
+  if (!isBrowserDataImportProgress(data)) return
+  if (!browserDataImportTaskId.value || data.taskId !== browserDataImportTaskId.value) return
+  browserDataImportProgress.value = data
+}
+
+function handleImportExportProgress(data: unknown) {
+  if (!isImportExportProgress(data)) return
+  if (!importExportTaskId.value || data.taskId !== importExportTaskId.value) return
+  importExportProgress.value = data
+}
+
+function isBrowserDataImportProgress(data: unknown): data is BrowserDataImportProgress {
+  if (!data || typeof data !== 'object') return false
+  const progress = data as Partial<BrowserDataImportProgress>
+  return (
+    typeof progress.taskId === 'string' &&
+    typeof progress.phase === 'string' &&
+    typeof progress.percent === 'number' &&
+    typeof progress.message === 'string' &&
+    typeof progress.completedSteps === 'number' &&
+    typeof progress.totalSteps === 'number'
+  )
+}
+
+function isImportExportProgress(data: unknown): data is ImportExportProgress {
+  if (!data || typeof data !== 'object') return false
+  const progress = data as Partial<ImportExportProgress>
+  return (
+    typeof progress.taskId === 'string' &&
+    (progress.mode === 'import' || progress.mode === 'export') &&
+    typeof progress.phase === 'string' &&
+    typeof progress.percent === 'number' &&
+    typeof progress.message === 'string' &&
+    typeof progress.completedSteps === 'number' &&
+    typeof progress.totalSteps === 'number'
+  )
+}
+
+function readBrowserDataImportError(error: unknown) {
+  return readErrorMessage(error, '导入浏览器数据失败')
+}
+
+function isImportExportCanceled(error: unknown): boolean {
+  const message = readErrorMessage(error, '')
+  return message === 'Export cancelled' || message === 'Import cancelled'
+}
+
+function buildEnvironmentImportSuccessMessage(result: EnvironmentImportResult): string {
+  const installedPluginCount = result.plugins.filter((plugin) => !plugin.skipped).length
+  const parts = [`已导入 ${result.environments.length} 个环境`]
+  if (installedPluginCount > 0) {
+    parts.push(`新增 ${installedPluginCount} 个插件`)
+  }
+  return parts.join('，')
+}
+
+async function batchLaunch() {
+  await launchSelectedEnvironments('standard')
 }
 
 async function batchDebugLaunch() {
+  await launchSelectedEnvironments('cdp')
+}
+
+async function launchSelectedEnvironments(launchMode: LaunchMode) {
   const toLaunch = selectedStopped.value
   const alreadyRunning = selectedRunning.value
 
-  if (toLaunch.length === 0) {
-    return
+  if (toLaunch.length === 0 || isEnvironmentOperationBusy.value) return
+
+  try {
+    closeInlineMenu()
+    for (const env of toLaunch) {
+      await store.dispatch('environments/launch', { envId: env.id, launchMode })
+    }
+
+    arrangeLaunchedWindows(toLaunch, alreadyRunning)
+  } catch (error) {
+    console.error('[launchSelectedEnvironments] error:', error)
+    toast.error(readErrorMessage(error, '批量启动环境失败'))
   }
-
-  for (const env of toLaunch) await store.dispatch('environments/launch', { envId: env.id, launchMode: 'cdp' })
-
-  arrangeLaunchedWindows(toLaunch, alreadyRunning)
 }
 
 function arrangeLaunchedWindows(toLaunch: Environment[], alreadyRunning: Environment[]) {
@@ -610,8 +1247,8 @@ function arrangeLaunchedWindows(toLaunch: Environment[], alreadyRunning: Environ
   setTimeout(async () => {
     try {
       const runningIds = [
-        ...toLaunch.map((e: any) => e.id),
-        ...alreadyRunning.map((e: any) => e.id)
+        ...toLaunch.map((env) => env.id),
+        ...alreadyRunning.map((env) => env.id)
       ]
       await window.electronAPI.invoke('windows-arrange', { envIds: runningIds })
     } catch (e) {
@@ -621,11 +1258,18 @@ function arrangeLaunchedWindows(toLaunch: Environment[], alreadyRunning: Environ
 }
 async function batchClose() {
   const toClose = selectedRunning.value
-  if (toClose.length === 0) return
-  for (const env of toClose) await store.dispatch('environments/close', env.id)
+  if (toClose.length === 0 || isEnvironmentOperationBusy.value) return
+
+  try {
+    closeInlineMenu()
+    for (const env of toClose) await store.dispatch('environments/close', env.id)
+  } catch (error) {
+    console.error('[batchClose] error:', error)
+    toast.error(readErrorMessage(error, '批量关闭环境失败'))
+  }
 }
 async function batchDelete() {
-  if (selectedIds.value.length === 0) return
+  if (selectedIds.value.length === 0 || isEnvironmentOperationBusy.value) return
   showDeleteConfirm.value = true
 }
 
@@ -635,29 +1279,61 @@ function cancelBatchDelete() {
 }
 
 async function confirmBatchDelete() {
+  if (isEnvironmentOperationBusy.value) return
+
   // 单个删除
   if (deletingEnv.value) {
     const env = deletingEnv.value
     cancelBatchDelete()
-    await store.dispatch('environments/delete', env.id)
+    await deleteEnvironmentsWithOverlay([env.id])
     return
   }
   // 批量删除
   const ids = [...selectedIds.value]
   cancelBatchDelete()
   if (ids.length === 0) return
-  for (const id of ids) await store.dispatch('environments/delete', id)
+  await deleteEnvironmentsWithOverlay(ids)
+}
+
+async function deleteEnvironmentsWithOverlay(ids: string[]) {
+  if (ids.length === 0 || isDeletingEnvironments.value) return
+
+  isDeletingEnvironments.value = true
+  deletingEnvironmentCount.value = ids.length
+  deletedEnvironmentCount.value = 0
+
+  try {
+    for (const id of ids) {
+      await store.dispatch('environments/delete', id)
+      deletedEnvironmentCount.value += 1
+    }
+    toast.success(`已删除 ${deletedEnvironmentCount.value} 个环境`)
+  } catch (error) {
+    console.error('[deleteEnvironmentsWithOverlay] error:', error)
+    toast.error(readErrorMessage(error, '删除环境失败'))
+  } finally {
+    isDeletingEnvironments.value = false
+    deletingEnvironmentCount.value = 0
+    deletedEnvironmentCount.value = 0
+  }
 }
 
 // --- Helpers ---
 function normalizePageSize(value: unknown): number {
   const size = Number(value)
-  return [10, 20, 50, 100].includes(size) ? size : 10
+  return (PAGE_SIZE_OPTIONS as readonly number[]).includes(size) ? size : DEFAULT_PAGE_SIZE
+}
+function updatePageSize(nextSize: number): void {
+  const normalizedSize = normalizePageSize(nextSize)
+  if (pageSize.value === normalizedSize) return
+  pageSize.value = normalizedSize
+  currentPage.value = 1
+  void store.dispatch('settings/save', { environmentPageSize: normalizedSize })
 }
 function rowNumber(index: number): number {
   return (currentPage.value - 1) * pageSize.value + index + 1
 }
-function statusBadgeClass(status: string) {
+function statusBadgeClass(status: EnvironmentStatus) {
   return {
     running: 'bg-emerald-50 text-emerald-700',
     stopped: 'bg-slate-100 text-slate-600',
@@ -666,19 +1342,32 @@ function statusBadgeClass(status: string) {
     error: 'bg-red-50 text-red-700',
   }[status] ?? 'bg-slate-100 text-slate-600'
 }
-function statusLabel(status: string) { return { running: '运行中', stopped: '已停止', starting: '启动中', stopping: '停止中', error: '异常' }[status] ?? status }
-function proxyLabel(env: any): string {
+function statusLabel(status: EnvironmentStatus) { return { running: '运行中', stopped: '已停止', starting: '启动中', stopping: '停止中', error: '异常' }[status] ?? status }
+function proxyLabel(env: Environment): string {
   if (!env.proxy?.host) return '-'
   return `${env.proxy.host}:${env.proxy.port}`
 }
 function formatTime(t?: string): string { if (!t) return '-'; return new Date(t).toLocaleString() }
+
+function isEnvironmentStatus(value: string): value is EnvironmentStatus {
+  return ['stopped', 'starting', 'running', 'stopping', 'error'].includes(value)
+}
+
+function readErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message
+  if (typeof error === 'string' && error.trim()) return error
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string' && message.trim()) return message
+  }
+  return fallback
+}
 </script>
 
 <style scoped>
 .env-filter-input,
 .env-filter-select {
   height: 36px;
-  padding: 0 12px;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   outline: none;
@@ -688,12 +1377,56 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
 .env-filter-input {
   width: 320px;
   max-width: 32vw;
+  padding: 0 12px 0 36px;
+}
+.env-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 15px;
+  height: 15px;
+  color: #94a3b8;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.env-filter-select-wrap {
+  position: relative;
+  display: inline-flex;
 }
 .env-filter-select {
-  width: 120px;
+  width: 104px;
+  padding: 0 32px 0 12px;
+  appearance: none;
+}
+.env-filter-select-icon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  color: #111827;
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 .env-filter-input:focus,
-.env-filter-select:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,.15); }
+.env-filter-select:focus { border-color: #cbd5e1; box-shadow: 0 0 0 2px rgba(148, 163, 184, .18); }
+.select-all-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+}
+.select-all-control:hover {
+  background: #f2f2f2;
+  color: #0f172a;
+}
 .btn-primary { padding: 7px 16px; font-size: 13px; font-weight: 500; background-color: #3b82f6; color: white; border-radius: 6px; border: 0; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
 .btn-primary:hover { background-color: #2563eb; }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -701,267 +1434,163 @@ function formatTime(t?: string): string { if (!t) return '-'; return new Date(t)
 .btn-outline:hover { background-color: #f9fafb; border-color: #cbd5e1; color: #1f2937; }
 .btn-outline-danger { padding: 7px 16px; font-size: 13px; font-weight: 500; background-color: white; color: #ef4444; border-radius: 6px; border: 1px solid #fecaca; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
 .btn-outline-danger:hover { background-color: #fef2f2; border-color: #fca5a5; }
-.action-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-}
-.action-group-danger {
-  background: transparent;
-  border: 0;
-}
 .action-btn {
-  height: 30px;
-  padding: 0 13px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #374151;
-  font-size: 12px;
-  font-weight: 400;
-  letter-spacing: 0.01em;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease, filter 120ms ease;
-}
-.action-btn:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #1f2937;
-}
-.action-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-  filter: grayscale(0.35);
-}
-.action-btn-start,
-.action-btn-stop,
-.action-btn-delete {
-  background: #ffffff;
-  border-color: #d1d5db;
-  color: #374151;
-}
-.action-btn-start:hover:not(:disabled),
-.action-btn-stop:hover:not(:disabled),
-.action-btn-delete:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #1f2937;
-}
-.action-btn-start {
-  border-radius: 6px 0 0 6px;
-}
-.action-btn-shortcut {
-  border-radius: 6px 0 0 6px;
-}
-.toolbar-split {
   position: relative;
-  display: inline-flex;
-  align-items: stretch;
-}
-.toolbar-split__toggle {
-  width: 28px;
-  border: 1px solid #d1d5db;
-  border-left: 0;
-  border-radius: 0 6px 6px 0;
-  background: #ffffff;
-  color: #374151;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease, filter 120ms ease;
-}
-.toolbar-split__toggle:hover:not(:disabled),
-.toolbar-split__toggle--open {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #1f2937;
-}
-.toolbar-split__toggle--start {
-  border-color: #d1d5db;
-}
-.toolbar-split__toggle:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-  filter: grayscale(0.35);
-}
-.toolbar-split__caret {
-  display: inline-block;
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid currentColor;
-}
-.row-action-btn {
-  height: 28px;
-  padding: 0 4px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #334155;
-  font-size: 12px;
-  font-weight: 400;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
-}
-.row-action-btn:hover {
-  background: #eef2f7;
-  color: #0f172a;
-}
-.row-action-btn:focus-visible {
-  outline: 2px solid #93c5fd;
-  outline-offset: 1px;
-}
-.row-action-btn--neutral {
-  color: #64748b;
-}
-.row-action-btn--neutral:hover {
-  background: #f1f5f9;
-  color: #475569;
-}
-.row-action-btn--accent {
-  color: #7c3aed;
-}
-.row-action-btn--accent:hover {
-  background: #f5f3ff;
-  color: #6d28d9;
-}
-.row-action-btn--danger {
-  color: #ef4444;
-}
-.row-action-btn--danger:hover {
-  background: #fef2f2;
-  color: #dc2626;
-}
-.row-action-btn--info {
-  color: #3b82f6;
-}
-.row-action-btn--info:hover {
-  background: #eff6ff;
-  color: #2563eb;
-}
-.row-action-btn--warm {
-  color: #f59e0b;
-}
-.row-action-btn--warm:hover {
-  background: #fffbeb;
-  color: #d97706;
-}
-.ghost-btn {
-  padding: 4px 8px;
-  background: none;
-  border: none;
-  color: #3b82f6;
-  cursor: pointer;
-  border-radius: 4px;
-  font-size: 12px;
-}
-.ghost-btn:hover { background: #eff6ff; color: #2563eb; }
-.ghost-btn-danger { color: #ef4444; }
-.ghost-btn-danger:hover { background: #fef2f2; }
-.ghost-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.row-split {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  overflow: visible;
-}
-.row-split__main,
-.row-split__toggle {
-  height: 28px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #334155;
-  font-size: 12px;
-  font-weight: 400;
-  cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
-}
-.row-split__main {
-  padding: 0 4px;
-}
-.row-split__toggle {
-  width: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-.row-split__main:hover,
-.row-split__toggle:hover,
-.row-split__toggle--open {
-  background: #eef2f7;
-  color: #0f172a;
-}
-.row-split__main:focus-visible,
-.row-split__toggle:focus-visible {
-  outline: 2px solid #93c5fd;
-  outline-offset: 1px;
-}
-.row-split__main--start,
-.row-split__toggle--start {
-  color: #3b82f6;
-}
-.row-split__main--start:hover,
-.row-split__toggle--start:hover,
-.row-split__toggle--open.row-split__toggle--start {
-  color: #2563eb;
-  background: #eff6ff;
-}
-.row-split__main--shortcut,
-.row-split__toggle--shortcut {
-  color: #3b82f6;
-}
-.row-split__main--shortcut:hover,
-.row-split__toggle--shortcut:hover,
-.row-split__toggle--open.row-split__toggle--shortcut {
-  color: #2563eb;
-  background: #eff6ff;
-}
-.row-split__caret {
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid currentColor;
-}
-.row-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  min-width: 188px;
-  padding: 4px;
-  border: 1px solid #dbeafe;
-  border-radius: 4px;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-  z-index: 30;
-}
-.row-menu--compact {
-  min-width: 92px;
-}
-.row-menu__item {
-  width: 100%;
-  padding: 6px 8px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
   border: 0;
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
-  color: #374151;
+  color: #111827;
   font-size: 12px;
-  font-weight: 400;
-  text-align: left;
+  font-weight: 500;
+  letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease, filter 120ms ease;
+  overflow: visible;
 }
-.row-menu__item:hover {
-  background: #f8fafc;
-  color: #1f2937;
+.action-btn:hover:not(:disabled),
+.action-btn--open {
+  background: #f2f2f2;
+  color: #000000;
 }
-.row-menu__item--debug:hover {
-  background: #f8fafc;
-  color: #1f2937;
+.action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+.action-btn-stop,
+.action-btn-delete {
+  background: transparent;
+  color: #111827;
+}
+.action-btn-stop:hover:not(:disabled),
+.action-btn-delete:hover:not(:disabled),
+.action-btn--open {
+  background: #f2f2f2;
+  color: #000000;
+}
+.action-btn-delete:hover:not(:disabled) {
+  background: #f2f2f2;
+  color: #ef4444;
+}
+.action-btn-stop:hover:not(:disabled) {
+  background: #f2f2f2;
+  color: #ef4444;
+}
+.action-btn__icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: currentColor;
+}
+.action-btn::after {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  top: calc(100% + 6px);
+  left: 50%;
+  z-index: 20;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -2px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  content: attr(data-label);
+}
+.action-btn:hover:not(:disabled)::after,
+.action-btn:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.ghost-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: #111827;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.ghost-btn:hover { background: #f2f2f2; color: #000000; }
+.ghost-btn--stop:hover { background: #f2f2f2; color: #ef4444; }
+.ghost-btn--danger { color: #111827; }
+.ghost-btn--danger:hover { background: #f2f2f2; color: #ef4444; }
+.ghost-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.floating-row-actions .ghost-btn::after {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  top: calc(100% + 6px);
+  left: 50%;
+  z-index: 140;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -2px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  content: attr(data-label);
+}
+.floating-row-actions .ghost-btn:hover::after,
+.floating-row-actions .ghost-btn:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.row-action-icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  color: currentColor;
+}
+.floating-row-actions {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--env-row-bg);
+  box-shadow: none;
+  z-index: 120;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateY(2px);
+  transition: transform 120ms ease;
+}
+.list-surface:not(.list-surface--row-menu-open) .list-table-row:hover .floating-row-actions,
+.list-table-row--actions-open .floating-row-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%);
+  background: var(--env-row-bg);
 }
 </style>

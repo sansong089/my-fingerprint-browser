@@ -103,7 +103,7 @@
         </div>
       </div>
 
-      <div class="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+      <div class="px-6 py-4 border-t border-slate-200 flex justify-center gap-2">
         <button @click="$emit('close')" class="btn btn-secondary text-sm">取消</button>
         <button
           @click="importBookmarks"

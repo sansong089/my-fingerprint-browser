@@ -1,0 +1,4 @@
+interface:
+  display_name: "Environment List Style"
+  short_description: "Apply this project's environment list table style."
+  default_prompt: "Use the project environment list style for list/table UI changes."

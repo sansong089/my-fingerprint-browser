@@ -1,112 +1,284 @@
 <template>
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @mousedown.self="$emit('close')">
-    <div class="bg-white rounded-xl w-full max-w-lg max-h-[85vh] overflow-hidden">
-      <!-- Header -->
-      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-        <h3 class="text-base font-semibold text-slate-800">{{ mode === 'export' ? '导出环境' : '导入环境' }}</h3>
-        <button @click="$emit('close')" class="p-1 hover:bg-slate-100 rounded text-slate-400">&times;</button>
+  <div
+    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    @mousedown.self="$emit('close')"
+  >
+    <div class="bg-white rounded-xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+      <!-- ========== Header ========== -->
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
+        <h3 class="text-base font-semibold text-slate-800">{{ titleText }}</h3>
+        <button
+          @click="$emit('close')"
+          aria-label="关闭"
+          class="p-1 hover:bg-slate-100 rounded text-slate-400 text-xl leading-none"
+        >&times;</button>
       </div>
 
-      <!-- Tab 切换 -->
-      <div class="px-6 pt-3 flex gap-1 border-b border-slate-200">
+      <!-- ========== Tabs (only on initial views) ========== -->
+      <div
+        v-if="showTabs"
+        class="px-6 pt-3 flex gap-1 border-b border-slate-200 shrink-0"
+      >
         <button
           class="px-4 py-2 text-sm font-medium rounded-t-md transition-colors"
-          :class="mode === 'export' ? 'bg-white border-x border-t border-b-0 border-slate-200 -mb-px text-blue-600' : 'text-slate-500 hover:text-slate-700'"
-          @click="mode = 'export'"
+          :class="mode === 'export'
+            ? 'bg-white border-x border-t border-b-0 border-slate-200 -mb-px text-blue-600'
+            : 'text-slate-500 hover:text-slate-700'"
+          @click="switchToExport"
         >📤 导出</button>
         <button
           class="px-4 py-2 text-sm font-medium rounded-t-md transition-colors"
-          :class="mode === 'import' ? 'bg-white border-x border-t border-b-0 border-slate-200 -mb-px text-blue-600' : 'text-slate-500 hover:text-slate-700'"
-          @click="mode = 'import'"
+          :class="mode === 'import'
+            ? 'bg-white border-x border-t border-b-0 border-slate-200 -mb-px text-blue-600'
+            : 'text-slate-500 hover:text-slate-700'"
+          @click="switchToImport"
         >📥 导入</button>
       </div>
 
-      <!-- 导出模式 -->
-      <div v-if="mode === 'export'" class="p-6 space-y-4 overflow-y-auto" style="max-height: calc(85vh - 180px)">
-        <!-- 选择要导出的环境 -->
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-2">选择要导出的环境</label>
-          <div class="space-y-1.5 max-h-48 overflow-y-auto rounded-lg border border-slate-200 p-2">
-            <!-- 全选 -->
-            <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
-              <input type="checkbox" :checked="isAllExportSelected" @change="toggleExportSelectAll" />
-              <span class="text-xs font-medium text-slate-600">全选 ({{ environments.length }})</span>
-            </label>
-            <div v-for="env in environments" :key="env.id"
-              class="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer"
-            >
-              <input type="checkbox" :value="env.id" v-model="selectedExportIds" />
-              <span class="inline-block w-3 h-3 rounded-full mr-1 shrink-0" :style="{ backgroundColor: env.color || '#94a3b8' }"></span>
-              <span class="text-xs text-slate-700 truncate">{{ env.name }}</span>
+      <!-- ========== Unified error banner ========== -->
+      <div v-if="currentError" class="px-6 pt-4 shrink-0">
+        <div class="rounded-lg bg-red-50 border border-red-100 px-4 py-3">
+          <p class="text-xs text-red-600">⚠️ {{ currentError }}</p>
+        </div>
+      </div>
+
+      <!-- ========== Body (mutually exclusive via v-else-if chain) ========== -->
+      <div class="flex-1 overflow-y-auto">
+        <!-- ----- Export: step 1 (env selection) ----- -->
+        <div v-if="view === 'export-select'" class="p-6 space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-2">选择要导出的环境</label>
+            <div class="space-y-1.5 max-h-48 overflow-y-auto rounded-lg border border-slate-200 p-2">
+              <label
+                class="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  :checked="isAllExportSelected"
+                  @change="toggleExportSelectAll"
+                />
+                <span class="text-xs font-medium text-slate-600">
+                  全选 ({{ environments.length }})
+                </span>
+              </label>
+              <label
+                v-for="env in environments"
+                :key="env.id"
+                class="flex items-center gap-2 px-2 py-1.5 rounded"
+                :class="env.status === 'running'
+                  ? 'opacity-50 cursor-not-allowed bg-slate-50'
+                  : 'hover:bg-slate-50 cursor-pointer'"
+              >
+                <input
+                  type="checkbox"
+                  :value="env.id"
+                  :disabled="env.status === 'running'"
+                  v-model="selectedExportIds"
+                />
+                <span
+                  class="inline-block w-3 h-3 rounded-full mr-1 shrink-0"
+                  :style="{ backgroundColor: env.color || '#94a3b8' }"
+                ></span>
+                <span class="text-xs text-slate-700 truncate flex-1">{{ env.name }}</span>
+                <span
+                  v-if="env.status === 'running'"
+                  class="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded shrink-0"
+                >运行中</span>
+              </label>
+            </div>
+            <p class="mt-1 text-[11px] text-slate-400">
+              已选择 {{ selectedExportIds.length }} 个（运行中的环境无法导出）
+            </p>
+          </div>
+
+          <div class="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3">
+            <p class="text-xs text-blue-700 font-medium mb-1">📦 导出内容</p>
+            <ul class="text-[11px] text-blue-600 space-y-0.5 list-disc pl-4">
+              <li>环境配置（指纹、代理、标签等）</li>
+              <li>浏览器数据（书签、历史、设置等）</li>
+              <li>关联的插件</li>
+              <li>Cookie（可选密码加密）</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- ----- Export: step 2 (password) ----- -->
+        <div v-else-if="view === 'export-password'" class="p-6 space-y-4">
+          <div class="flex flex-col items-center text-center mb-2">
+            <div class="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mb-3">
+              <svg class="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.558.425l-1.892 1.892a.75.75 0 00-.278.555v.954a.75.75 0 01-.75.75h-.954a.75.75 0 01-.53-.22l-1.892-1.892a.75.75 0 00-.557-.278H5.25a.75.75 0 01-.75-.75v-1.5a.75.75 0 01.22-.53l4.723-4.723a.75.75 0 00.425-1.558A6 6 0 0118.75 8.25z" />
+              </svg>
+            </div>
+            <p class="text-sm text-slate-500 max-w-xs">
+              设置密码来加密 Cookie 数据，导入时需要输入相同密码才能恢复
+            </p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1.5">Cookie 密码</label>
+            <input
+              v-model="cookiePassword"
+              type="password"
+              class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none"
+              placeholder="设置密码以加密 Cookie 数据"
+            />
+            <p class="mt-1 text-[11px] text-slate-400">留空则不导出 Cookie</p>
+          </div>
+        </div>
+
+        <!-- ----- Export: success ----- -->
+        <div
+          v-else-if="view === 'export-success'"
+          class="p-8 flex flex-col items-center justify-center text-center min-h-[360px]"
+        >
+          <div class="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+            <svg class="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-slate-800 mb-1">导出成功</h3>
+          <p class="text-sm text-slate-500 mb-6">环境已成功导出到文件</p>
+
+          <div class="w-full max-w-sm bg-slate-50 rounded-lg px-4 py-3 mb-6">
+            <div class="flex items-center gap-2 text-xs text-slate-500 mb-1">
+              <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>文件位置</span>
+            </div>
+            <p class="text-xs text-slate-700 break-all text-left select-all">{{ exportResult!.path }}</p>
+          </div>
+
+          <div class="flex items-center gap-1 text-xs text-slate-400">
+            <span>{{ selectedExportIds.length }} 个环境</span>
+            <span>·</span>
+            <span>{{ cookiePassword ? '已加密 Cookie' : '未包含 Cookie' }}</span>
+          </div>
+        </div>
+
+        <!-- ----- Import: form ----- -->
+        <div v-else-if="view === 'import-form'" class="p-6 space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1.5">Cookie 密码</label>
+            <input
+              v-model="cookiePassword"
+              type="password"
+              class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none"
+              placeholder="如果导出时设置了密码，请输入相同密码"
+            />
+            <p class="mt-1 text-[11px] text-slate-400">如果导出时未设置密码，可留空</p>
+          </div>
+
+          <div class="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3">
+            <p class="text-xs text-blue-700 font-medium mb-1">📦 导入说明</p>
+            <ul class="text-[11px] text-blue-600 space-y-0.5 list-disc pl-4">
+              <li>选择之前导出的 ZIP 文件</li>
+              <li>环境名称重复时会自动重命名</li>
+              <li>已存在的插件会跳过</li>
+              <li>如果导出时设置了密码，需要输入相同密码才能恢复 Cookie</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- ----- Import: success ----- -->
+        <div v-else-if="view === 'import-success'" class="p-8 min-h-[360px]">
+          <div class="flex flex-col items-center text-center mb-6">
+            <div class="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+              <svg class="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-slate-800 mb-1">导入成功</h3>
+            <p class="text-sm text-slate-500">已成功导入以下内容</p>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+              </svg>
+              <span>环境 ({{ importResult!.environments.length }})</span>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <span
+                v-for="env in importResult!.environments"
+                :key="env.id"
+                class="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 border border-blue-100 rounded-md text-xs text-blue-700"
+              >
+                <span
+                  class="w-2 h-2 rounded-full"
+                  :class="env.renamed ? 'bg-amber-400' : 'bg-blue-400'"
+                ></span>
+                {{ env.name }}
+                <span v-if="env.renamed" class="text-[10px] text-amber-500 ml-0.5">(已重命名)</span>
+              </span>
             </div>
           </div>
-          <p class="mt-1 text-[11px] text-slate-400">已选择 {{ selectedExportIds.length }} 个</p>
-        </div>
 
-        <!-- 导出格式 -->
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1.5">格式</label>
-          <select v-model="exportFormat" class="input w-full text-sm">
-            <option value="json">JSON（完整数据）</option>
-            <option value="csv">CSV（表格）</option>
-          </select>
-        </div>
-
-        <!-- 导出预览 -->
-        <div v-if="selectedExportIds.length > 0" class="rounded-lg bg-slate-50 p-3 border border-slate-100">
-          <p class="text-xs font-medium text-slate-500 mb-1.5">预览：</p>
-          <pre class="text-[11px] text-slate-600 whitespace-pre-wrap max-h-32 overflow-y-auto font-mono">{{ exportPreview }}</pre>
-        </div>
-      </div>
-
-      <!-- 导入模式 -->
-      <div v-if="mode === 'import'" class="p-6 space-y-4 overflow-y-auto" style="max-height: calc(85vh - 180px)">
-        <!-- 文件上传区域 -->
-        <div
-          class="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors"
-          :class="isDragging ? 'border-blue-400 bg-blue-50' : 'border-slate-300 hover:border-slate-400'"
-          @dragover.prevent="isDragging = true"
-          @dragleave.prevent="isDragging = false"
-          @drop.prevent="handleDrop"
-          @click="triggerFileInput"
-        >
-          <input ref="fileInputRef" type="file" accept=".json,.csv" class="hidden" @change="handleFileSelect" />
-          <p class="text-sm text-slate-600">拖拽文件到此处，或点击选择文件</p>
-          <p class="mt-1 text-[11px] text-slate-400">支持 .json 和 .csv 格式，最大 10MB</p>
-        </div>
-
-        <!-- 导入结果/错误 -->
-        <div v-if="importError" class="rounded-lg bg-red-50 border border-red-100 px-4 py-3">
-          <p class="text-xs text-red-600">⚠️ {{ importError }}</p>
-        </div>
-
-        <div v-if="parsedImportData.length > 0" class="rounded-lg bg-emerald-50 border border-emerald-100 px-4 py-3">
-          <p class="text-xs text-emerald-700 font-medium mb-1">✅ 解析成功：{{ parsedImportData.length }} 条记录</p>
-          <ul class="text-[11px] text-emerald-600 space-y-0.5 max-h-28 overflow-y-auto list-disc pl-4">
-            <li v-for="(item, i) in parsedImportData.slice(0, 20)" :key="i">{{ item.name || '(未命名)' }}{{ i >= 19 ? ` ... (共 ${parsedImportData.length} 条)` : '' }}</li>
-          </ul>
+          <div v-if="importResult!.plugins.length > 0" class="mt-5 space-y-2">
+            <div class="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+              </svg>
+              <span>插件 ({{ importResult!.plugins.filter(p => !p.skipped).length }} 个新装)</span>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <span
+                v-for="plugin in importResult!.plugins"
+                :key="plugin.id"
+                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs"
+                :class="plugin.skipped
+                  ? 'bg-slate-50 border border-slate-200 text-slate-400'
+                  : 'bg-emerald-50 border border-emerald-100 text-emerald-700'"
+              >
+                <svg v-if="plugin.skipped" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+                </svg>
+                <svg v-else class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+                {{ plugin.name }}
+                <span v-if="plugin.skipped" class="text-[10px] ml-0.5">已存在，跳过</span>
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Footer -->
-      <div class="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
-        <button @click="$emit('close')" class="btn btn-secondary text-sm">取消</button>
-        <button
-          v-if="mode === 'export'"
-          @click="doExport"
-          :disabled="selectedExportIds.length === 0"
-          class="btn btn-primary text-sm"
-        >
-          导出 {{ selectedExportIds.length }} 个
-        </button>
-        <button
-          v-if="mode === 'import'"
-          @click="doImport"
-          :disabled="parsedImportData.length === 0"
-          class="btn btn-primary text-sm"
-        >
-          导入 {{ parsedImportData.length }} 个环境
-        </button>
+      <!-- ========== Footer (mutually exclusive via v-else-if chain) ========== -->
+      <div class="px-6 py-4 border-t border-slate-200 flex justify-center gap-2 shrink-0">
+        <template v-if="view === 'export-select'">
+          <button @click="closeDialog" class="btn btn-secondary text-sm">取消</button>
+          <button
+            @click="goToPasswordStep"
+            :disabled="selectedExportIds.length === 0"
+            class="btn btn-primary text-sm"
+          >导出</button>
+        </template>
+
+        <template v-else-if="view === 'export-password'">
+          <button @click="goToSelectStep" class="btn btn-secondary text-sm">返回</button>
+          <button
+            @click="doExport"
+            :disabled="exporting"
+            class="btn btn-primary text-sm"
+          >{{ exporting ? '导出中...' : '开始导出' }}</button>
+        </template>
+
+        <template v-else-if="view === 'export-success' || view === 'import-success'">
+          <button @click="resetState" class="btn btn-secondary text-sm">返回</button>
+          <button @click="closeDialog" class="btn btn-primary text-sm">关闭</button>
+        </template>
+
+        <template v-else-if="view === 'import-form'">
+          <button @click="closeDialog" class="btn btn-secondary text-sm">取消</button>
+          <button
+            @click="doImport"
+            :disabled="importing"
+            class="btn btn-primary text-sm"
+          >{{ importing ? '导入中...' : '选择 ZIP 文件导入' }}</button>
+        </template>
       </div>
     </div>
   </div>
@@ -116,282 +288,151 @@
 import { ref, computed, onMounted } from 'vue'
 import { useStore } from 'vuex'
 
-const store = useStore()
+// ---- Types ----
+type Mode = 'export' | 'import'
+type ExportStep = 1 | 2
+type View = 'export-select' | 'export-password' | 'export-success' | 'import-form' | 'import-success'
 
+interface ImportResult {
+  environments: { id: string; name: string; renamed?: boolean }[]
+  plugins: { id: string; name: string; skipped: boolean }[]
+}
+
+// ---- Setup ----
+const store = useStore()
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'imported', count: number): void
+  (e: 'submit-export', payload: { envIds: string[]; cookiePassword?: string }): void
+  (e: 'submit-import', payload: { cookiePassword?: string }): void
 }>()
 
-// ---- 状态 ----
-const mode = ref<'export' | 'import'>('export')
+// ---- State ----
+const mode = ref<Mode>('export')
+const exportStep = ref<ExportStep>(1)
 const selectedExportIds = ref<string[]>([])
-const exportFormat = ref<'json' | 'csv'>('json')
-
-// 导入状态
-const isDragging = ref(false)
-const fileInputRef = ref<HTMLInputElement | null>(null)
+const cookiePassword = ref('')
+const exporting = ref(false)
+const importing = ref(false)
+const exportError = ref('')
 const importError = ref('')
-const parsedImportData = ref<any[]>([])
+const exportResult = ref<{ path: string } | null>(null)
+const importResult = ref<ImportResult | null>(null)
+
+// ---- Computed views (single source of truth) ----
+const view = computed<View>(() => {
+  if (mode.value === 'export') {
+    if (exportResult.value) return 'export-success'
+    if (exportStep.value === 2) return 'export-password'
+    return 'export-select'
+  }
+  return importResult.value ? 'import-success' : 'import-form'
+})
+
+const showTabs = computed(() => view.value === 'export-select' || view.value === 'import-form')
+const currentError = computed(() => exportError.value || importError.value)
+
+const titleText = computed<string>(() => {
+  switch (view.value) {
+    case 'export-success': return '导出成功'
+    case 'export-password': return '导出环境 - 设置 Cookie 密码'
+    case 'export-select': return '导出环境'
+    case 'import-success': return '导入成功'
+    case 'import-form': return '导入环境'
+  }
+})
+
+const environments = computed<any[]>(() => (store.state.environments as any)?.list || [])
+
+const isAllExportSelected = computed(
+  () => environments.value.length > 0
+    && selectedExportIds.value.length
+      === environments.value.filter((e: any) => e.status !== 'running').length
+)
+
+const selectableEnvs = computed<any[]>(() =>
+  environments.value.filter((e: any) => e.status !== 'running')
+)
+
+// ---- State transitions ----
+function resetState() {
+  mode.value = 'export'
+  exportStep.value = 1
+  selectedExportIds.value = []
+  cookiePassword.value = ''
+  exporting.value = false
+  importing.value = false
+  exportError.value = ''
+  importError.value = ''
+  exportResult.value = null
+  importResult.value = null
+}
+
+function switchToExport() {
+  mode.value = 'export'
+  exportError.value = ''
+  importError.value = ''
+  importResult.value = null
+}
+
+function switchToImport() {
+  mode.value = 'import'
+  exportError.value = ''
+  importError.value = ''
+  exportResult.value = null
+  exportStep.value = 1
+}
+
+function goToPasswordStep() {
+  if (selectedExportIds.value.length === 0) return
+  exportStep.value = 2
+  exportError.value = ''
+}
+
+function goToSelectStep() {
+  exportStep.value = 1
+  exportError.value = ''
+}
+
+// ---- Selection helpers ----
+function toggleExportSelectAll() {
+  if (isAllExportSelected.value) {
+    selectedExportIds.value = []
+  } else {
+    selectedExportIds.value = selectableEnvs.value.map((e: any) => e.id)
+  }
+}
+
+// ---- Actions ----
+async function doExport() {
+  if (selectedExportIds.value.length === 0) return
+
+  exportError.value = ''
+  emit('submit-export', {
+    envIds: [...selectedExportIds.value],
+    cookiePassword: cookiePassword.value ? String(cookiePassword.value) : undefined,
+  })
+  emit('close')
+}
+
+async function doImport() {
+  importError.value = ''
+  importResult.value = null
+  emit('submit-import', {
+    cookiePassword: cookiePassword.value || undefined,
+  })
+  emit('close')
+}
+
+function closeDialog() {
+  emit('close')
+}
 
 onMounted(() => {
   if (!environments.value.length) store.dispatch('environments/fetchAll')
 })
-
-const environments = computed(() => (store.state.environments as any)?.list || [])
-
-const isAllExportSelected = computed(
-  () => environments.value.length > 0 && selectedExportIds.value.length === environments.value.length
-)
-
-function toggleExportSelectAll() {
-  if (isAllExportSelected.value) selectedExportIds.value = []
-  else selectedExportIds.value = environments.value.map((e: any) => e.id)
-}
-
-// ---- 导出预览 ----
-const exportPreview = computed(() => {
-  const toExport = environments.value.filter((e: any) => selectedExportIds.value.includes(e.id))
-  if (exportFormat.value === 'csv') {
-    // CSV 表头 + 数据行
-    const header = 'name,fingerprint_seed,platform,brand,proxy_type,proxy_host,proxy_port,tags,color,groupId'
-    const rows = toExport.map((e: any) =>
-      [e.name,
-        e.fingerprint?.seed || '',
-        e.fingerprint?.platform || '',
-        e.fingerprint?.brand || '',
-        e.proxy?.type || '',
-        e.proxy?.host || '',
-        e.proxy?.port || '',
-        (e.tags || []).join(';'),
-        e.color || '',
-        e.groupId || '',
-      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
-    )
-    return [header, ...rows].join('\n')
-  }
-  return JSON.stringify(toExport.map((e: any) => ({
-    name: e.name,
-    fingerprint: e.fingerprint,
-    proxy: e.proxy,
-    tags: e.tags,
-    color: e.color,
-    groupId: e.groupId,
-  })), null, 2).slice(0, 3000) + (toExport.length > 5 ? '\n...' : '')
-})
-
-/** 执行导出 — 触发下载 */
-async function doExport() {
-  if (selectedExportIds.value.length === 0) return
-
-  try {
-    const toExport = environments.value.filter((e: any) => selectedExportIds.value.includes(e.id))
-
-    let content: string
-    const filename = `environments_${new Date().toISOString().slice(0, 10)}`
-    if (exportFormat.value === 'csv') {
-      content = exportPreview.value
-      downloadFile(content, `${filename}.csv`, 'text/csv')
-    } else {
-      content = JSON.stringify(toExport.map((e: any) => ({
-        name: e.name, fingerprint: e.fingerprint, proxy: e.proxy,
-        tags: e.tags, color: e.color, groupId: e.groupId,
-      })), null, 2)
-      downloadFile(content, `${filename}.json`, 'application/json')
-    }
-
-    store.dispatch('logs/add', {
-      action: 'export',
-      details: `导出 ${toExport.length} 个环境 (${exportFormat.value})`,
-    })
-  } catch (e: any) {
-    importError.value = '导出失败: ' + (e.message || String(e))
-  }
-}
-
-/** 执行导入 */
-async function doImport() {
-  if (parsedImportData.value.length === 0) return
-
-  try {
-    const result = await window.electronAPI.invoke<{ imported: number; total: number }>('import-environments', {
-      environments: parsedImportData.value,
-      format: currentImportFormat.value as 'json' | 'csv',
-    })
-
-    emit('imported', result.imported)
-
-    store.dispatch('environments/fetchAll')
-    store.dispatch('logs/add', {
-      action: 'import',
-      details: `导入 ${result.imported}/${result.total} 个环境`,
-    })
-  } catch (e: any) {
-    importError.value = '导入失败: ' + (e.message || String(e))
-  }
-}
-
-// ---- 文件处理 ----
-let currentImportFormat = ref<'json' | 'csv'>('json')
-
-function triggerFileInput() {
-  fileInputRef.value?.click()
-}
-
-async function handleFileSelect(event: Event) {
-  const input = event.target as HTMLInputElement
-  if (input.files?.[0]) await processFile(input.files[0])
-}
-
-async function handleDrop(event: DragEvent) {
-  isDragging.value = false
-  const file = event.dataTransfer?.files[0]
-  if (file) await processFile(file)
-}
-
-async function processFile(file: File) {
-  importError.value = ''
-  parsedImportData.value = []
-
-  // 大小限制 10MB
-  if (file.size > 10 * 1024 * 1024) {
-    importError.value = '文件过大，最大支持 10MB'
-    return
-  }
-
-  const ext = file.name.split('.').pop()?.toLowerCase()
-  if (ext !== 'json' && ext !== 'csv') {
-    importError.value = '不支持的文件格式，请使用 .json 或 .csv'
-    return
-  }
-  currentImportFormat.value = ext as 'json' | 'csv'
-
-  try {
-    const text = await file.text()
-    if (ext === 'json') {
-      const data = JSON.parse(text)
-      const arr = Array.isArray(data) ? data : data.environments || []
-      // 沙箱校验前端预检
-      parsedImportData.value = sanitizeImport(arr)
-    } else {
-      // CSV 解析
-      parsedImportData.value = parseCSV(text)
-    }
-  } catch (e: any) {
-    importError.value = '解析失败: ' + (e.message || String(e))
-  }
-}
-
-/** 沙箱校验：字段截断、危险键清理、数量上限 */
-function sanitizeImport(items: any[]): any[] {
-  return items.slice(0, 500).map(item => ({
-    name: String(item.name || '').slice(0, 100),
-    fingerprint: typeof item.fingerprint === 'object' && item.fingerprint ? stripDangerousKeys(item.fingerprint) : {},
-    proxy: typeof item.proxy === 'object' && item.proxy ? stripDangerousKeys(item.proxy) : undefined,
-    tags: Array.isArray(item.tags) ? item.tags.slice(0, 20).map(String).filter(Boolean) : [],
-    color: typeof item.color === 'string' ? item.color.slice(0, 30) : undefined,
-    groupId: typeof item.groupId === 'string' ? item.groupId.slice(0, 64) : undefined,
-  })).filter(item => item.name.trim())
-}
-
-/**
- * 移除原型链污染键（__proto__、constructor、prototype）
- * 以及非字符串/数字类型的值
- */
-function stripDangerousKeys(obj: Record<string, any>): Record<string, any> {
-  const DANGEROUS_KEYS = ['__proto__', 'constructor', 'prototype']
-  const result: Record<string, any> = {}
-  for (const key of Object.keys(obj)) {
-    if (DANGEROUS_KEYS.includes(key)) continue
-    const val = obj[key]
-    if (val == null) continue
-    if (typeof val === 'string') result[key] = val.slice(0, 500)
-    else if (typeof val === 'number' && Number.isFinite(val)) result[key] = val
-    else if (typeof val === 'boolean') result[key] = val
-    else if (typeof val === 'object' && !Array.isArray(val)) result[key] = stripDangerousKeys(val)
-    // 忽略数组、函数、symbol 等
-  }
-  return result
-}
-
-/** 简单 CSV 解析器（处理双引号转义） */
-function parseCSV(text: string): any[] {
-  const lines = text.split(/\r?\n/).filter(l => l.trim())
-  if (lines.length < 2) return []  // 至少需要表头 + 数据
-
-  const headers = parseCSVLine(lines[0])
-  const results: any[] = []
-
-  for (let i = 1; i < Math.min(lines.length, 501); i++) {
-    const values = parseCSVLine(lines[i])
-    const row: Record<string, any> = {}
-    for (let j = 0; j < headers.length && j < values.length; j++) {
-      row[headers[j]] = values[j]
-    }
-    if (row.name) results.push(sanitizeImport([row])[0])  // 复用 sanitize 做清理
-  }
-
-  return results
-}
-
-/** 解析一行 CSV，支持双引号包裹和双引号转义 "" */
-function parseCSVLine(line: string): string[] {
-  const fields: string[] = []
-  let current = ''
-  let inQuotes = false
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (inQuotes) {
-      if (ch === '"') {
-        if (i + 1 < line.length && line[i + 1] === '"') {
-          current += '"'; i++
-        } else {
-          inQuotes = false
-        }
-      } else {
-        current += ch
-      }
-    } else {
-      if (ch === '"') inQuotes = true
-      else if (ch === ',') { fields.push(current.trim()); current = '' }
-      else current += ch
-    }
-  }
-  fields.push(current.trim())
-  return fields
-}
-
-/** 浏览器端触发文件下载 */
-function downloadFile(content: string, filename: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-}
 </script>
 
 <style scoped>
-.input {
-  height: 36px;
-  padding: 0 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  outline: none;
-  font-size: 13px;
-  background: #fff;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  width: 100%;
-}
-.input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
-}
 .btn {
   padding: 7px 18px;
   font-size: 13px;

@@ -7,9 +7,6 @@ export interface PluginListItem {
   storeUrl: string
   iconUrl?: string
   targetedEnvCount: number
-  installedEnvCount: number
-  missingEnvCount: number
-  suppressedEnvCount: number
   runningEnvCount: number
   applyNeededEnvIds: string[]
   lastUpdatedAt: string
@@ -45,7 +42,6 @@ class PluginCatalogService {
       const target: EnvironmentPluginTarget = {
         envId: env.id,
         pluginId,
-        desiredState: 'installed',
         applyBackend: 'launch-arg',
       }
       storageService.upsertPluginTarget(target)
@@ -61,7 +57,6 @@ class PluginCatalogService {
       const target: EnvironmentPluginTarget = {
         envId,
         pluginId: plugin.id,
-        desiredState: 'installed',
         applyBackend: 'launch-arg',
       }
       storageService.upsertPluginTarget(target)
@@ -78,29 +73,15 @@ class PluginCatalogService {
     storageService.upsertPluginTarget({
       envId,
       pluginId,
-      desiredState: 'installed',
       applyBackend: 'launch-arg',
       lastAppliedVersion: version,
       lastMaterializedAt: new Date().toISOString(),
     })
   }
 
-  setTargetRemoved(envId: string, pluginId: string): void {
-    const existing = this.getTargetsForEnvironment(envId).find(target => target.pluginId === pluginId)
-    storageService.upsertPluginTarget({
-      envId,
-      pluginId,
-      desiredState: 'removed',
-      applyBackend: existing?.applyBackend || 'launch-arg',
-      lastAppliedVersion: existing?.lastAppliedVersion,
-      lastMaterializedAt: existing?.lastMaterializedAt,
-      lastError: existing?.lastError,
-    })
-  }
-
   removePluginEverywhere(pluginId: string): void {
     for (const env of storageService.getEnvironments()) {
-      this.setTargetRemoved(env.id, pluginId)
+      storageService.deletePluginTarget(env.id, pluginId)
     }
     storageService.deletePlugin(pluginId)
   }
@@ -112,15 +93,11 @@ class PluginCatalogService {
 
     for (const env of environments) {
       const existing = existingTargets.find(target => target.envId === env.id)
-      if (!existing || existing.desiredState !== 'installed') {
+      if (!existing) {
         const target: EnvironmentPluginTarget = {
           envId: env.id,
           pluginId,
-          desiredState: 'installed',
           applyBackend: 'launch-arg',
-          lastAppliedVersion: existing?.lastAppliedVersion,
-          lastMaterializedAt: existing?.lastMaterializedAt,
-          lastError: existing?.lastError,
         }
         storageService.upsertPluginTarget(target)
         targets.push(target)
@@ -134,19 +111,12 @@ class PluginCatalogService {
     storageService.deletePluginTargetsForEnvironment(envId)
   }
 
-  buildPluginListItems(options?: { suppressedByEnv?: Record<string, string[]> }): PluginListItem[] {
+  buildPluginListItems(): PluginListItem[] {
     const environments = storageService.getEnvironments()
     const runningEnvIds = new Set(environments.filter(env => env.status === 'running').map(env => env.id))
-    const suppressedByEnv = options?.suppressedByEnv || {}
 
     return this.listPlugins().map(plugin => {
       const targets = this.listTargets().filter(target => target.pluginId === plugin.id)
-      const targeted = targets.filter(target => target.desiredState === 'installed')
-      const removed = targets.filter(target => target.desiredState !== 'installed')
-      const suppressedEnvIds = Object.entries(suppressedByEnv)
-        .filter(([, ids]) => ids.includes(plugin.id))
-        .map(([envId]) => envId)
-      const installedEnvCount = Math.max(0, targeted.length - suppressedEnvIds.length)
       return {
         id: plugin.id,
         name: plugin.name,
@@ -154,12 +124,9 @@ class PluginCatalogService {
         storeUrl: plugin.storeUrl,
         iconUrl: plugin.iconUrl,
         description: plugin.description,
-        targetedEnvCount: targeted.length,
-        installedEnvCount,
-        missingEnvCount: removed.length,
-        suppressedEnvCount: suppressedEnvIds.length,
-        runningEnvCount: targeted.filter(target => runningEnvIds.has(target.envId)).length,
-        applyNeededEnvIds: targeted.filter(target => runningEnvIds.has(target.envId)).map(target => target.envId),
+        targetedEnvCount: targets.length,
+        runningEnvCount: targets.filter(target => runningEnvIds.has(target.envId)).length,
+        applyNeededEnvIds: targets.filter(target => runningEnvIds.has(target.envId)).map(target => target.envId),
         lastUpdatedAt: plugin.updatedAt,
       }
     })

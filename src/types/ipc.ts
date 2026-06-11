@@ -52,13 +52,16 @@ export interface BatchCloseParams {
 
 // --- Import/Export IPC ---
 export interface ImportEnvironmentsParams {
-  filePath: string
-  format: 'json' | 'csv'
+  filePath?: string
 }
 
 export interface ExportEnvironmentsParams {
   envIds: string[]
-  format: 'json' | 'csv'
+}
+
+export interface ImportResult {
+  environments: { id: string; name: string }[]
+  plugins: { id: string; name: string; skipped: boolean }[]
 }
 
 // --- Cookie IPC ---

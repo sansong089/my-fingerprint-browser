@@ -6,33 +6,15 @@
       <!-- 浏览器路径 -->
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">浏览器路径</label>
-        <input v-model="settings.browserPath" type="text" placeholder="留空则自动检测" class="input w-full" />
-        <p class="text-xs text-slate-400 mt-1">留空时默认使用应用内嵌 fingerprint Chromium；也可指定其他浏览器路径</p>
+        <input v-model="settings.browserPath" type="text" placeholder="非必要不修改" class="input w-full" />
+        <p class="text-xs text-slate-400 mt-1">默认使用内置指纹浏览器，非必要请勿修改。</p>
       </div>
 
-      <!-- 默认平台 -->
-      <div class="grid grid-cols-2 gap-4">
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">默认操作系统</label>
-          <select v-model="settings.defaultPlatform" class="input w-full">
-            <option value="windows">Windows</option><option value="linux">Linux</option><option value="macos">macOS</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">默认时区</label>
-          <input v-model="settings.defaultTimezone" type="text" class="input w-full" />
-        </div>
-      </div>
-
-      <!-- 语言 -->
+      <!-- 浏览器数据根目录 -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">默认语言</label>
-        <select v-model="settings.defaultLang" class="input w-full">
-          <option value="zh-CN">简体中文</option>
-          <option value="en-US">English (US)</option>
-          <option value="ja-JP">日本語</option>
-          <option value="ko-KR">한국어</option>
-        </select>
+        <label class="block text-sm font-medium text-slate-700 mb-1">浏览器数据根目录</label>
+        <input v-model="settings.browserDataRoot" type="text" placeholder="留空则使用默认路径" class="input w-full" />
+        <p class="text-xs text-slate-400 mt-1">所有环境的用户数据将存储在此目录下。</p>
       </div>
 
       <!-- 开关选项 -->
@@ -45,6 +27,10 @@
           <input type="checkbox" v-model="settings.minimizeToTray" class="w-4 h-4 rounded border-slate-300 text-blue-500 focus:ring-blue-500">
           <span class="text-sm text-slate-700">关闭时最小化到托盘</span>
         </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" v-model="settings.closeOnQuit" class="w-4 h-4 rounded border-slate-300 text-blue-500 focus:ring-blue-500">
+          <span class="text-sm text-slate-700">退出时关闭浏览器</span>
+        </label>
       </div>
 
       <!-- 同步延迟 -->
@@ -54,7 +40,7 @@
       </div>
 
       <!-- 保存按钮 -->
-      <div class="pt-4 border-t border-slate-200 flex justify-end gap-2">
+      <div class="pt-4 border-t border-slate-200 flex justify-center gap-2">
         <button @click="resetSettings" class="btn-outline">重置默认</button>
         <button @click="save" :disabled="saving" class="btn-primary">{{ saving ? '保存中...' : '保存设置' }}</button>
       </div>
@@ -71,11 +57,13 @@ const saving = ref(false)
 
 const settings = reactive({
   browserPath: '',
+  browserDataRoot: '',
   defaultPlatform: 'windows' as string,
   defaultTimezone: 'Asia/Shanghai',
   defaultLang: 'zh-CN',
   autoStart: false,
   minimizeToTray: false,
+  closeOnQuit: true,
   syncDelay: 50,
 })
 

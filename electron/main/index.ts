@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, screen, type OpenDialogOptions, type Point, type Rectangle } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen, Tray, Menu, nativeImage, type OpenDialogOptions, type Point, type Rectangle } from 'electron'
 import { join } from 'path'
 import { appendFileSync, mkdirSync } from 'fs'
 
@@ -19,11 +19,15 @@ import { pluginInstallService } from './services/PluginInstallService'
 import { pluginStoreWindowService } from './services/PluginStoreWindowService'
 import { localApiService } from './services/LocalApiService'
 import { bookmarkImportService } from './services/BookmarkImportService'
+import { browserProfileImportService } from './services/BrowserProfileImportService'
+import { exportImportService } from './services/ExportImportService'
+import { cookieFileService } from './services/CookieFileService'
 import { generateFingerprint } from './utils/fingerprintGenerator'
 
 // Global references
 let mainWindow: BrowserWindow | null = null
 let floatingToolbarWindow: BrowserWindow | null = null
+let tray: Tray | null = null
 let suppressFloatingToolbarClose = false
 let suppressFloatingToolbarMove = false
 let floatingToolbarMode: FloatingToolbarMode = 'floating'
@@ -664,6 +668,91 @@ async function invokeWindowActionForRunningEnvs(channel: 'windows-arrange' | 'wi
   return changed
 }
 
+/** 设置开机自启 */
+function setupAutoLaunch() {
+  const settings = storageService.getSettings()
+  app.setLoginItemSettings({
+    openAtLogin: settings.autoStart,
+    path: app.getPath('exe'),
+  })
+  runtimeLog('setupAutoLaunch', { autoStart: settings.autoStart })
+}
+
+/** 处理退出时关闭浏览器的逻辑 */
+async function handleQuitBrowserClose(): Promise<void> {
+  const settings = storageService.getSettings()
+  const runningEnvs = storageService.getEnvironments().filter(e => e.status === 'running')
+  
+  // 没有运行中的浏览器，直接返回
+  if (runningEnvs.length === 0) return
+  
+  // 根据设置决定是否关闭浏览器
+  if (settings.closeOnQuit) {
+    environmentManager.closeAllBrowsers()
+  }
+}
+
+/** 创建系统托盘 */
+function createTray() {
+  runtimeLog('createTray:start')
+  
+  // 使用应用图标或创建简单图标
+  const iconPath = join(__dirname, '../../public/icon.ico')
+  let trayIcon: Electron.NativeImage
+  
+  try {
+    trayIcon = nativeImage.createFromPath(iconPath)
+    if (trayIcon.isEmpty()) {
+      throw new Error('Icon is empty')
+    }
+  } catch {
+    // 如果图标不存在，创建一个简单的图标
+    trayIcon = nativeImage.createEmpty()
+    runtimeLog('createTray:using-empty-icon')
+  }
+  
+  tray = new Tray(trayIcon)
+  
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '显示主窗口',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show()
+          mainWindow.focus()
+        }
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: async () => {
+        try {
+          ;(app as any).isQuitting = true
+          await handleQuitBrowserClose()
+          app.quit()
+        } catch {
+          // 用户取消退出
+          ;(app as any).isQuitting = false
+        }
+      },
+    },
+  ])
+  
+  tray.setToolTip('指纹浏览器')
+  tray.setContextMenu(contextMenu)
+  
+  // 点击托盘图标显示窗口
+  tray.on('click', () => {
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+  
+  runtimeLog('createTray:done')
+}
+
 function createWindow() {
   runtimeLog('createWindow:start')
   mainWindow = new BrowserWindow({
@@ -761,6 +850,32 @@ function createWindow() {
     }, 100)
   })
 
+  // 最小化到托盘功能和退出时关闭浏览器逻辑
+  mainWindow.on('close', async (event) => {
+    const settings = storageService.getSettings()
+    
+    // 如果是从托盘菜单触发的退出，允许关闭
+    if ((app as any).isQuitting) return
+    
+    // 如果设置了最小化到托盘，隐藏窗口
+    if (settings.minimizeToTray) {
+      event.preventDefault()
+      mainWindow?.hide()
+      runtimeLog('mainWindow:minimized-to-tray')
+      return
+    }
+    
+    // 直接关闭窗口时，根据设置决定是否关闭浏览器
+    try {
+      event.preventDefault()
+      await handleQuitBrowserClose()
+      ;(app as any).isQuitting = true
+      mainWindow?.destroy()
+    } catch {
+      // 用户取消退出
+    }
+  })
+
   mainWindow.on('closed', () => {
     runtimeLog('mainWindow:closed')
     mainWindow = null
@@ -772,6 +887,8 @@ app.whenReady().then(() => {
   runtimeLog('app:whenReady')
   environmentManager.resetRunningStatuses()
   localApiService.start()
+  setupAutoLaunch()
+  createTray()
   createWindow()
   screen.on('display-metrics-changed', () => positionFloatingToolbarWindow())
   screen.on('display-added', () => positionFloatingToolbarWindow())
@@ -787,7 +904,6 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   runtimeLog('app:window-all-closed')
-  environmentManager.closeAllBrowsers()
   if (process.platform !== 'darwin') {
     runtimeLog('app:quit')
     app.quit()
@@ -796,6 +912,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   runtimeLog('app:before-quit')
+  ;(app as any).isQuitting = true
 })
 
 app.on('render-process-gone', (_event, webContents, details) => {
@@ -961,14 +1078,22 @@ ipcMain.handle('save-settings', (_, settings) => {
   const validation = validateIPC('save-settings', settings)
   if (!validation.success) throw new Error(validation.error)
   storageService.saveSettings(settings)
+  
+  // 更新开机自启状态
+  if (settings.autoStart !== undefined) {
+    app.setLoginItemSettings({
+      openAtLogin: settings.autoStart,
+      path: app.getPath('exe'),
+    })
+    runtimeLog('save-settings:autoStart', { autoStart: settings.autoStart })
+  }
+  
   return true
 })
 
 // --- Plugin management ---
 ipcMain.handle('plugins-list', () => {
-  return pluginCatalogService.buildPluginListItems({
-    suppressedByEnv: pluginInstallService.getSuppressedByEnvironment(),
-  })
+  return pluginCatalogService.buildPluginListItems()
 })
 
 ipcMain.handle('plugins-backend-proof', () => {
@@ -1252,16 +1377,21 @@ ipcMain.handle('run-script', async (_, params) => {
 
 // ==================== Cookie 管理（CookieManager + CDP）====================
 
-/** 获取环境 Cookie */
+/** 获取环境 Cookie（支持运行时和文件模式） */
 ipcMain.handle('cookie-get', async (_, params) => {
   const envId = params?.envId
   if (!envId) throw new Error('Missing envId')
 
   const env = storageService.getEnvironments().find(e => e.id === envId)
-  if (!env?.cdpPort) throw new Error('Environment has no CDP port')
-  if (env.status !== 'running') throw new Error('Browser is not running')
+  if (!env) throw new Error('Environment not found')
 
-  return cookieManager.getAllCookies(env.cdpPort)
+  // 浏览器运行时：通过 CDP 获取
+  if (env.status === 'running' && env.cdpPort) {
+    return cookieManager.getAllCookies(env.cdpPort)
+  }
+
+  // 浏览器未运行时：从文件读取
+  return cookieFileService.readCookiesFromFile(env.userDataDir)
 })
 
 /** 设置 Cookie */
@@ -1279,29 +1409,45 @@ ipcMain.handle('cookie-set', async (_, params) => {
   return cookieManager.setCookie(env.cdpPort, cookies)
 })
 
-/** 导入 Cookie */
+/** 导入 Cookie（支持运行时和文件模式） */
 ipcMain.handle('cookie-import', async (_, params) => {
   const { envId, cookies } = params || {}
   if (!envId || !Array.isArray(cookies)) throw new Error('Invalid params')
 
   const env = storageService.getEnvironments().find(e => e.id === envId)
-  if (!env?.cdpPort) throw new Error('Environment has no CDP port')
+  if (!env) throw new Error('Environment not found')
 
-  const result = await cookieManager.importCookies(env.cdpPort, cookies)
-  activityLogService.log({ envId, action: 'cookie_import', details: `导入 ${result.success} 个 Cookie` })
+  // 浏览器运行时：通过 CDP 导入
+  if (env.status === 'running' && env.cdpPort) {
+    const result = await cookieManager.importCookies(env.cdpPort, cookies)
+    activityLogService.log({ envId, action: 'cookie_import', details: `CDP 导入 ${result.success} 个 Cookie` })
+    return result
+  }
+
+  // 浏览器未运行时：写入 SQLite 文件
+  const result = cookieFileService.writeCookiesToFile(env.userDataDir, cookies)
+  activityLogService.log({ envId, action: 'cookie_import', details: `文件导入 ${result.success} 个 Cookie` })
   return result
 })
 
-/** 导出 Cookie */
+/** 导出 Cookie（支持运行时和文件模式） */
 ipcMain.handle('cookie-export', async (_, params) => {
   const { envId } = params || {}
   if (!envId) throw new Error('Missing envId')
 
   const env = storageService.getEnvironments().find(e => e.id === envId)
-  if (!env?.cdpPort) throw new Error('Environment has no CDP port')
+  if (!env) throw new Error('Environment not found')
 
-  const cookies = await cookieManager.exportCookies(env.cdpPort)
-  activityLogService.log({ envId, action: 'cookie_export', details: `导出 ${cookies.length} 个 Cookie` })
+  // 浏览器运行时：通过 CDP 导出
+  if (env.status === 'running' && env.cdpPort) {
+    const cookies = await cookieManager.exportCookies(env.cdpPort)
+    activityLogService.log({ envId, action: 'cookie_export', details: `CDP 导出 ${cookies.length} 个 Cookie` })
+    return cookies
+  }
+
+  // 浏览器未运行时：从文件读取
+  const cookies = cookieFileService.readCookiesFromFile(env.userDataDir)
+  activityLogService.log({ envId, action: 'cookie_export', details: `文件导出 ${cookies.length} 个 Cookie` })
   return cookies
 })
 
@@ -1462,48 +1608,118 @@ ipcMain.handle('get-monitors', () => {
 })
 
 // ==================== 环境导入/导出 ====================
-ipcMain.handle('export-environments', async (_, params) => {
-  const { envIds } = params || {}
-  if (!Array.isArray(envIds) || envIds.length === 0) throw new Error('Missing envIds')
+ipcMain.handle('select-export-environments-path', async () => {
+  if (!mainWindow) throw new Error('Main window not available')
 
-  const allEnvs = storageService.getEnvironments()
-  const toExport = allEnvs.filter(e => envIds.includes(e.id)).map(e => ({
-    name: e.name,
-    fingerprint: e.fingerprint,
-    proxy: e.proxy,
-    tags: e.tags,
-    color: e.color,
-    groupId: e.groupId,
-  }))
-  activityLogService.log({ envId: 'system', action: 'export', details: `导出 ${toExport.length} 个环境` })
-  return toExport
+  const dialogResult = await dialog.showSaveDialog(mainWindow, {
+    title: '导出环境',
+    defaultPath: `environments_${new Date().toISOString().slice(0, 10)}.zip`,
+    filters: [
+      { name: 'ZIP 文件', extensions: ['zip'] },
+      { name: '所有文件', extensions: ['*'] },
+    ],
+  })
+
+  if (dialogResult.canceled || !dialogResult.filePath) {
+    throw new Error('Export cancelled')
+  }
+
+  return dialogResult.filePath
+})
+
+ipcMain.handle('export-environments', async (_, params) => {
+  console.log('[export-environments] Received params:', JSON.stringify(params))
+  const { envIds, cookiePassword, taskId, filePath } = params || {}
+  if (!Array.isArray(envIds) || envIds.length === 0) throw new Error('Missing envIds')
+  if (typeof filePath !== 'string' || !filePath) throw new Error('Missing filePath')
+  const emitProgress = typeof taskId === 'string' && taskId
+    ? (progress: any) => eventBus.emit('environment-import-export-progress', { ...progress, taskId, mode: 'export' })
+    : undefined
+
+  try {
+    emitProgress?.({
+      phase: 'processing',
+      percent: 20,
+      completedSteps: 0,
+      totalSteps: 2,
+      message: `正在导出 ${envIds.length} 个环境...`,
+    })
+    console.log('[export-environments] Starting export...')
+    const outputPath = await exportImportService.exportEnvironments(envIds, filePath, cookiePassword)
+    console.log('[export-environments] Export completed:', outputPath)
+    emitProgress?.({
+      phase: 'done',
+      percent: 100,
+      completedSteps: 2,
+      totalSteps: 2,
+      message: '导出完成',
+    })
+    return { success: true, path: String(outputPath) }
+  } catch (error) {
+    emitProgress?.({
+      phase: 'failed',
+      percent: 100,
+      completedSteps: 0,
+      totalSteps: 2,
+      message: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
+})
+
+ipcMain.handle('select-import-environments-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    title: '导入环境',
+    filters: [
+      { name: 'ZIP 文件', extensions: ['zip'] },
+      { name: '所有文件', extensions: ['*'] },
+    ],
+    properties: ['openFile'],
+  })
+
+  if (result.canceled || result.filePaths.length === 0) {
+    throw new Error('Import cancelled')
+  }
+
+  return result.filePaths[0]
 })
 
 ipcMain.handle('import-environments', async (_, params) => {
-  const { environments: importedEnvs, format } = params || {}
-  if (!Array.isArray(importedEnvs)) throw new Error('Invalid import data')
-  if (importedEnvs.length > 500) throw new Error('Max 500 environments per import')
-  if (importedEnvs.length === 0) throw new Error('No data to import')
+  const zipPath = params?.filePath
+  const cookiePassword = params?.cookiePassword
+  const taskId = params?.taskId
+  if (typeof zipPath !== 'string' || !zipPath) throw new Error('Missing filePath')
+  const emitProgress = typeof taskId === 'string' && taskId
+    ? (progress: any) => eventBus.emit('environment-import-export-progress', { ...progress, taskId, mode: 'import' })
+    : undefined
 
-  let created = 0
-  for (const item of importedEnvs) {
-    // 沙箱校验：字段长度限制 + 危险键清理
-    const safeName = (item.name || '').toString().slice(0, 100)
-    if (!safeName.trim()) continue
-
-    const env = environmentManager.createEnvironment({
-      name: safeName,
-      fingerprint: item.fingerprint || {},
-      proxy: item.proxy,
-      tags: Array.isArray(item.tags) ? item.tags.map(String) : [],
-      color: item.color,
-      groupId: item.groupId,
+  try {
+    emitProgress?.({
+      phase: 'processing',
+      percent: 20,
+      completedSteps: 0,
+      totalSteps: 2,
+      message: '正在导入环境...',
     })
-    if (env) created++
+    const importResult = await exportImportService.importEnvironments(zipPath, cookiePassword)
+    emitProgress?.({
+      phase: 'done',
+      percent: 100,
+      completedSteps: 2,
+      totalSteps: 2,
+      message: '导入完成',
+    })
+    return importResult
+  } catch (error) {
+    emitProgress?.({
+      phase: 'failed',
+      percent: 100,
+      completedSteps: 0,
+      totalSteps: 2,
+      message: error instanceof Error ? error.message : String(error),
+    })
+    throw error
   }
-
-  activityLogService.log({ envId: 'system', action: 'import', details: `导入 ${created} 个环境 (${format || 'json'})` })
-  return { imported: created, total: importedEnvs.length }
 })
 
 // ==================== 收藏夹导入 ====================
@@ -1540,6 +1756,47 @@ ipcMain.handle('bookmarks-import', (_, params) => {
   const sourcePath = typeof params?.sourcePath === 'string' ? params.sourcePath : ''
   const envIds = Array.isArray(params?.envIds) ? params.envIds.map(String) : []
   return bookmarkImportService.importToEnvironments({ sourceType, sourcePath, envIds })
+})
+
+// ==================== 浏览器数据导入 ====================
+
+ipcMain.handle('browser-data-detect-sources', () => {
+  return browserProfileImportService.detectSources()
+})
+
+ipcMain.handle('browser-data-preview-import', (_, params: { sourceType: string; sourceProfileName?: string }) => {
+  if (!params?.sourceType) {
+    throw new Error('缺少必要参数')
+  }
+  return browserProfileImportService.preview(params.sourceType as any, params.sourceProfileName)
+})
+
+ipcMain.handle('browser-data-import', (_, params: { sourceType: string; sourceProfileName?: string; envIds: string[]; dataTypes: string[]; importTaskId?: string }) => {
+  if (!params?.sourceType || !Array.isArray(params?.envIds) || !Array.isArray(params?.dataTypes)) {
+    throw new Error('缺少必要参数')
+  }
+  const importTaskId = typeof params.importTaskId === 'string' ? params.importTaskId : ''
+  const emitProgress = importTaskId
+    ? (progress: any) => eventBus.emit('browser-data-import-progress', { ...progress, taskId: importTaskId })
+    : undefined
+
+  try {
+    return browserProfileImportService.importData({
+      sourceType: params.sourceType as any,
+      sourceProfileName: params.sourceProfileName,
+      envIds: params.envIds,
+      dataTypes: params.dataTypes as any,
+    }, emitProgress)
+  } catch (error) {
+    emitProgress?.({
+      phase: 'failed',
+      percent: 100,
+      completedSteps: 0,
+      totalSteps: 1,
+      message: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
 })
 
 // ==================== Activity Logs ====================

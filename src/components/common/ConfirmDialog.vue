@@ -13,7 +13,7 @@
         </div>
 
         <!-- 底部按钮 -->
-        <div class="px-6 py-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50/50">
+        <div class="px-6 py-4 border-t border-slate-200 flex justify-center gap-2 bg-slate-50/50">
           <button @click="onCancel" class="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors">
             {{ cancelText }}
           </button>

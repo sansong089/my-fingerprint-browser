@@ -94,7 +94,7 @@ class PluginInstallService {
 
   getLaunchContextForEnvironment(envId: string, userDataDir: string): LaunchContext {
     this.ensureBackendProof()
-    const targets = pluginCatalogService.getTargetsForEnvironment(envId).filter(target => target.desiredState === 'installed')
+    const targets = pluginCatalogService.getTargetsForEnvironment(envId)
     const desiredPluginIds = targets.map(target => target.pluginId)
     const extensionDirs = targets
       .map(target => pluginCatalogService.getPlugin(target.pluginId))

@@ -90,6 +90,7 @@ class BookmarkImportService {
     sourceType: BookmarkSourceType
     sourcePath: string
     envIds: string[]
+    onEnvironmentComplete?: (envId: string) => void
   }): BookmarkImportResult {
     if (!Array.isArray(params.envIds) || params.envIds.length === 0) {
       throw new Error('请选择要导入收藏夹的环境')
@@ -116,30 +117,34 @@ class BookmarkImportService {
     }
 
     for (const envId of params.envIds) {
-      const env = targetEnvs.find(item => item.id === envId)
-      if (!env) {
-        result.failed.push({ envId, reason: '环境不存在' })
-        continue
-      }
-
-      if (env.status === 'running' || launchService.isRunning(env.id)) {
-        result.skippedRunning.push(env.id)
-        continue
-      }
-
       try {
-        this.mergeIntoEnvironmentBookmarks(env.userDataDir, importedTree)
-        result.importedEnvironments++
-        activityLogService.log({
-          envId: env.id,
-          action: 'import',
-          details: `导入收藏夹: ${this.sourceLabel(params.sourceType)} | 链接 ${stats.urlCount} | 文件夹 ${stats.folderCount}`,
-        })
-      } catch (error) {
-        result.failed.push({
-          envId: env.id,
-          reason: error instanceof Error ? error.message : String(error),
-        })
+        const env = targetEnvs.find(item => item.id === envId)
+        if (!env) {
+          result.failed.push({ envId, reason: '环境不存在' })
+          continue
+        }
+
+        if (env.status === 'running' || launchService.isRunning(env.id)) {
+          result.skippedRunning.push(env.id)
+          continue
+        }
+
+        try {
+          this.mergeIntoEnvironmentBookmarks(env.userDataDir, importedTree)
+          result.importedEnvironments++
+          activityLogService.log({
+            envId: env.id,
+            action: 'import',
+            details: `导入收藏夹: ${this.sourceLabel(params.sourceType)} | 链接 ${stats.urlCount} | 文件夹 ${stats.folderCount}`,
+          })
+        } catch (error) {
+          result.failed.push({
+            envId: env.id,
+            reason: error instanceof Error ? error.message : String(error),
+          })
+        }
+      } finally {
+        params.onEnvironmentComplete?.(envId)
       }
     }
 

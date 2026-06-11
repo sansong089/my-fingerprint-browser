@@ -40,6 +40,7 @@ export type {
   BatchCloseParams,
   ImportEnvironmentsParams,
   ExportEnvironmentsParams,
+  ImportResult,
   CookieGetParams,
   CookieSetParams,
   SyncStartParams,

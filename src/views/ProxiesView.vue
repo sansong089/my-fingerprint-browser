@@ -65,79 +65,120 @@
       <button @click="openCreate" class="btn-primary text-xs">+ 新增代理</button>
     </div>
 
-    <!-- 批量操作栏 -->
-    <div class="flex items-center gap-2 mb-3">
-      <span v-if="selectedIds.length > 0" class="text-xs text-slate-500">已选 {{ selectedIds.length }} 个</span>
-      <template v-if="selectedIds.length > 0">
-        <button @click="batchTest" :disabled="batchTesting" class="tool-btn text-xs">
-          {{ batchTesting ? '检测中...' : '批量检测' }}
-        </button>
-        <button @click="batchMoveGroup" class="tool-btn text-xs">移动分组</button>
-        <button @click="batchDelete" class="tool-btn-danger text-xs">删除选中</button>
-        <button @click="selectedIds = []" class="text-xs text-slate-400 hover:text-slate-600 px-1">取消选择</button>
-      </template>
-    </div>
-
-    <!-- 代理表格 -->
-    <table v-if="filteredProxies.length > 0" class="w-full text-sm bg-white rounded-lg border border-slate-200">
-      <thead>
-        <tr class="bg-slate-50 border-b border-slate-200">
-          <th class="h-10 w-10 px-3 text-center">
+    <ListSurface :has-items="filteredProxies.length > 0">
+      <template #toolbar>
+        <div class="flex items-center gap-2">
+          <label class="select-all-control">
             <input type="checkbox" :checked="allSelected" :indeterminate="isIndeterminate" @change="toggleAll" class="cursor-pointer" />
-          </th>
-          <th class="h-10 w-14 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">编号</th>
-          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">名称</th>
-          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">类型</th>
-          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">地址</th>
-          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">状态</th>
-          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">使用数</th>
-          <th class="h-10 px-4 text-center font-medium text-[12px] uppercase tracking-wide text-slate-500 whitespace-nowrap">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="(p, index) in paginatedProxies" :key="p.id" class="border-b border-slate-100 hover:bg-slate-50 transition-colors"
-          :class="{ 'bg-blue-50/60': selectedIds.includes(p.id) }">
-          <td class="py-2.5 px-3 text-center">
-            <input type="checkbox" :checked="selectedIds.includes(p.id)" @change="toggleSelect(p.id)" class="cursor-pointer" />
-          </td>
-          <td class="py-2.5 px-4 text-center text-xs font-medium text-slate-500">{{ rowNumber(index) }}</td>
-          <td class="py-2.5 px-4 font-medium text-slate-700 text-center">{{ p.name }}</td>
-          <td class="py-2.5 px-4 text-center">
-            <span class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">{{ p.type.toUpperCase() }}</span>
-          </td>
-          <td class="py-2.5 px-4 font-mono text-xs text-slate-600 text-center">{{ p.host }}:{{ p.port }}</td>
-          <td class="py-2.5 px-4 text-center">
-            <span class="text-[11px] px-2 py-0.5 rounded-full" :class="proxyStatusClass(p.status)">
-              {{ proxyStatusLabel(p.status) }}
-            </span>
-          </td>
-          <td class="py-2.5 px-4 text-center text-xs text-slate-500">{{ usageCount(p) }}</td>
-          <td class="py-2.5 px-4 text-center">
-            <div class="flex items-center justify-center gap-1">
-              <button @click="testProxy(p.id)" :disabled="testingId === p.id" class="ghost-btn text-xs">
-                {{ testingId === p.id ? '检测中...' : '检测' }}
-              </button>
-              <button @click="edit(p)" class="ghost-btn text-xs">编辑</button>
-              <button @click="copyProxy(p)" class="ghost-btn text-xs">复制</button>
-              <button @click="deleteOne(p.id)" class="ghost-btn text-xs">删除</button>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            <span>全选</span>
+          </label>
+          <button
+            @click="batchTest"
+            :disabled="selectedIds.length === 0 || batchTesting"
+            class="tool-icon-btn"
+            aria-label="批量检测"
+            :data-label="batchTesting ? '检测中' : '批量检测'"
+          >
+            <RefreshCwIcon class="tool-icon" :class="{ 'tool-icon--spinning': batchTesting }" />
+          </button>
+          <button
+            @click="batchMoveGroup"
+            :disabled="selectedIds.length === 0"
+            class="tool-icon-btn"
+            aria-label="移动分组"
+            data-label="移动分组"
+          >
+            <FolderInputIcon class="tool-icon" />
+          </button>
+          <div class="flex-1"></div>
+          <button
+            @click="batchDelete"
+            :disabled="selectedIds.length === 0"
+            class="tool-icon-btn tool-icon-btn--danger"
+            aria-label="删除选中"
+            data-label="删除选中"
+          >
+            <TrashIcon class="tool-icon" />
+          </button>
+        </div>
+      </template>
 
-    <div v-else class="flex flex-col items-center justify-center py-16 text-slate-400">
-      <p class="text-sm">{{ currentGroupId !== null && currentGroupId !== '' ? '该分组暂无代理' : '暂无代理配置' }}</p>
-      <button @click="openCreate" class="mt-3 btn-primary text-xs">添加第一个代理</button>
-    </div>
+      <!-- 代理表格 -->
+      <table class="w-full text-sm border-separate border-spacing-0">
+        <thead>
+          <tr>
+            <th class="list-table-head w-24 rounded-tl-lg">编号</th>
+            <th class="list-table-head">名称</th>
+            <th class="list-table-head">类型</th>
+            <th class="list-table-head">地址</th>
+            <th class="list-table-head">状态</th>
+            <th class="list-table-head rounded-tr-lg">使用数</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="(p, index) in paginatedProxies"
+            :key="p.id"
+            class="list-table-row transition-colors"
+            :class="{ 'list-table-row--selected': selectedIds.includes(p.id) }"
+          >
+            <td class="py-2.5 px-4 text-center">
+              <div class="flex items-center justify-center gap-3">
+                <input type="checkbox" :checked="selectedIds.includes(p.id)" @change="toggleSelect(p.id)" class="cursor-pointer" />
+                <span class="text-xs font-medium text-slate-500">{{ rowNumber(index) }}</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-slate-700 text-center">{{ p.name }}</td>
+            <td class="py-2.5 px-4 text-center">
+              <span class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">{{ p.type.toUpperCase() }}</span>
+            </td>
+            <td class="py-2.5 px-4 font-mono text-xs text-slate-600 text-center">{{ p.host }}:{{ p.port }}</td>
+            <td class="py-2.5 px-4 text-center">
+              <span class="text-[11px] px-2 py-0.5 rounded-full" :class="proxyStatusClass(p.status)">
+                {{ proxyStatusLabel(p.status) }}
+              </span>
+            </td>
+            <td class="relative py-2.5 px-4 text-center text-xs text-slate-500">
+              <span>{{ usageCount(p) }}</span>
+              <div class="proxy-floating-row-actions">
+                <button
+                  @click.stop="testProxy(p.id)"
+                  :disabled="testingId === p.id"
+                  class="ghost-icon-btn"
+                  aria-label="检测"
+                  :data-label="testingId === p.id ? '检测中' : '检测'"
+                >
+                  <RefreshCwIcon class="row-action-icon" :class="{ 'tool-icon--spinning': testingId === p.id }" />
+                </button>
+                <button @click.stop="edit(p)" class="ghost-icon-btn" aria-label="编辑" data-label="编辑">
+                  <PencilIcon class="row-action-icon" />
+                </button>
+                <button @click.stop="copyProxy(p)" class="ghost-icon-btn" aria-label="复制" data-label="复制">
+                  <CopyIcon class="row-action-icon" />
+                </button>
+                <button @click.stop="deleteOne(p.id)" class="ghost-icon-btn ghost-icon-btn--danger" aria-label="删除" data-label="删除">
+                  <TrashIcon class="row-action-icon" />
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-    <PaginationBar
-      v-if="filteredProxies.length > 0"
-      v-model:current-page="currentPage"
-      v-model:page-size="pageSize"
-      :total="filteredProxies.length"
-      class="mt-3 rounded-lg border border-slate-200"
-    />
+      <template #empty>
+        <p class="text-sm">{{ currentGroupId !== null && currentGroupId !== '' ? '该分组暂无代理' : '暂无代理配置' }}</p>
+        <button @click="openCreate" class="mt-3 btn-primary text-xs">添加第一个代理</button>
+      </template>
+
+      <template #pagination>
+        <PaginationBar
+          v-if="filteredProxies.length > 0"
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :total="filteredProxies.length"
+        />
+      </template>
+    </ListSurface>
 
     <!-- 新建 / 编辑分组弹窗 -->
     <div v-if="showGroupDialog" class="fixed inset-0 bg-black/30 flex items-center justify-center z-50" @mousedown.self="closeGroupDialog">
@@ -151,7 +192,7 @@
           @keyup.enter="saveGroupDialog"
           ref="groupDialogInput"
         />
-        <div class="flex justify-end gap-2">
+        <div class="flex justify-center gap-2">
           <button @click="closeGroupDialog" class="btn-outline text-xs">取消</button>
           <button @click="saveGroupDialog" class="btn-primary text-xs">{{ editingGroupId ? '保存' : '创建' }}</button>
         </div>
@@ -174,7 +215,7 @@
             {{ group.name }}
           </button>
         </div>
-        <div class="flex justify-end">
+        <div class="flex justify-center">
           <button @click="showMoveGroup = false" class="btn-outline text-xs">取消</button>
         </div>
       </div>
@@ -248,7 +289,7 @@
             </div>
           </div>
         </div>
-        <div class="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+        <div class="px-6 py-4 border-t border-slate-200 flex justify-center gap-2">
           <button @click="showEditor = false" class="btn-outline text-xs">取消</button>
           <button @click="saveProxy" class="btn-primary text-xs">保存</button>
         </div>
@@ -283,8 +324,16 @@
 import { ref, computed, reactive, onMounted, nextTick, watch } from 'vue'
 import { useStore } from 'vuex'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import ListSurface from '@/components/common/ListSurface.vue'
 import PaginationBar from '@/components/common/PaginationBar.vue'
 import { toast } from '@/utils/toast'
+import {
+  CopyIcon,
+  FolderInputIcon,
+  PencilIcon,
+  RefreshCwIcon,
+  Trash2Icon as TrashIcon,
+} from 'lucide-vue-next'
 
 const store = useStore()
 const showEditor = ref(false)
@@ -362,8 +411,12 @@ const filteredProxies = computed(() => {
   if (currentGroupId.value === '') return proxies.value.filter((p: any) => !p.groupId || p.groupId === '')
   return proxies.value.filter((p: any) => p.groupId === currentGroupId.value)
 })
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredProxies.value.length / pageSize.value)))
+const totalPages = computed(() => {
+  if (pageSize.value === 0) return 1
+  return Math.max(1, Math.ceil(filteredProxies.value.length / pageSize.value))
+})
 const paginatedProxies = computed(() => {
+  if (pageSize.value === 0) return filteredProxies.value
   const start = (currentPage.value - 1) * pageSize.value
   return filteredProxies.value.slice(start, start + pageSize.value)
 })
@@ -522,7 +575,7 @@ function proxyStatusLabel(s: string) {
 
 function normalizePageSize(value: unknown): number {
   const size = Number(value)
-  return [10, 20, 50, 100].includes(size) ? size : 10
+  return [0, 10, 20, 50, 100].includes(size) ? size : 10
 }
 
 function rowNumber(index: number): number {
@@ -597,6 +650,7 @@ async function confirmDeleteGroup() {
 }
 
 function batchMoveGroup() {
+  if (selectedIds.value.length === 0) return
   showMoveGroup.value = true
 }
 
@@ -641,38 +695,130 @@ async function doMoveGroup(groupId: string) {
   cursor: pointer;
 }
 .btn-outline:hover { background: #f9fafb; }
-.tool-btn {
-  padding: 5px 10px;
-  font-size: 12px;
-  background: white;
-  color: #374151;
-  border: 1px solid #d1d5db;
+.select-all-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px;
   border-radius: 6px;
-  cursor: pointer;
-}
-.tool-btn:hover:not(:disabled) { background: #f9fafb; }
-.tool-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.tool-btn-danger {
-  padding: 5px 10px;
+  color: #111827;
   font-size: 12px;
-  background: white;
-  color: #ef4444;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
+  font-weight: 500;
   cursor: pointer;
+  user-select: none;
 }
-.tool-btn-danger:hover { background: #fef2f2; }
-.ghost-btn {
-  padding: 4px 8px;
-  background: none;
-  border: none;
-  color: #3b82f6;
+.select-all-control:hover {
+  background: #f2f2f2;
+  color: #0f172a;
+}
+.tool-icon-btn,
+.ghost-icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: #111827;
   cursor: pointer;
+  overflow: visible;
+}
+.tool-icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+}
+.ghost-icon-btn {
+  width: 28px;
+  height: 28px;
   border-radius: 4px;
-  font-size: 12px;
 }
-.ghost-btn:hover { background: #eff6ff; color: #2563eb; }
-.ghost-btn-danger { color: #ef4444; }
-.ghost-btn-danger:hover { background: #fef2f2; }
-.ghost-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.tool-icon-btn:hover:not(:disabled),
+.ghost-icon-btn:hover:not(:disabled) {
+  background: #f2f2f2;
+  color: #000000;
+}
+.tool-icon-btn--danger:hover:not(:disabled),
+.ghost-icon-btn--danger:hover:not(:disabled) {
+  background: #f2f2f2;
+  color: #ef4444;
+}
+.tool-icon-btn:disabled,
+.ghost-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.tool-icon,
+.row-action-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: currentColor;
+}
+.row-action-icon {
+  width: 13px;
+  height: 13px;
+}
+.tool-icon--spinning {
+  animation: proxy-icon-spin 900ms linear infinite;
+}
+.tool-icon-btn::after,
+.ghost-icon-btn::after {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  top: calc(100% + 6px);
+  left: 50%;
+  z-index: 140;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -2px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  content: attr(data-label);
+}
+.tool-icon-btn:hover:not(:disabled)::after,
+.tool-icon-btn:focus-visible::after,
+.ghost-icon-btn:hover:not(:disabled)::after,
+.ghost-icon-btn:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.proxy-floating-row-actions {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--env-row-bg);
+  box-shadow: none;
+  z-index: 120;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateY(2px);
+  transition: transform 120ms ease;
+}
+.list-surface .list-table-row:hover .proxy-floating-row-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%);
+  background: var(--env-row-bg);
+}
+@keyframes proxy-icon-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 </style>

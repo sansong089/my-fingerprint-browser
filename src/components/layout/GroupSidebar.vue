@@ -70,7 +70,7 @@
           class="input w-full mb-3"
           @keyup.enter="saveGroup"
         />
-        <div class="flex justify-end gap-2">
+        <div class="flex justify-center gap-2">
           <button @click="closeGroupDialog" class="btn-outline text-xs">取消</button>
           <button @click="saveGroup" class="btn-primary text-xs">{{ editingGroupId ? '保存' : '创建' }}</button>
         </div>

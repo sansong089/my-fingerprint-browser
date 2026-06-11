@@ -4,7 +4,7 @@
 
 export interface Settings {
   browserPath: string
-  defaultPlatform: 'windows' | 'linux' | 'macos'
+  defaultPlatform: 'windows' | 'linux' | 'macos' | 'ios' | 'android'
   defaultTimezone: string
   defaultLang: string
   autoStart: boolean

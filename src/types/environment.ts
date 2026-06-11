@@ -5,7 +5,7 @@
 
 export interface FingerprintConfig {
   seed: number
-  platform: 'windows' | 'linux' | 'macos'
+  platform: 'windows' | 'linux' | 'macos' | 'ios' | 'android'
   platformVersion?: string
   brand?: 'Chrome' | 'Edge' | 'Opera' | 'Vivaldi'
   brandVersion?: string

@@ -16,7 +16,6 @@ export interface PluginRecord {
 export interface EnvironmentPluginTarget {
   envId: string
   pluginId: string
-  desiredState: 'installed' | 'removed'
   applyBackend?: 'launch-arg' | 'profile-external' | 'proven-other'
   lastAppliedVersion?: string
   lastMaterializedAt?: string
@@ -41,9 +40,6 @@ export interface PluginListItem {
   storeUrl: string
   iconUrl?: string
   targetedEnvCount: number
-  installedEnvCount: number
-  missingEnvCount: number
-  suppressedEnvCount: number
   runningEnvCount: number
   applyNeededEnvIds: string[]
   lastUpdatedAt: string

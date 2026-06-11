@@ -94,6 +94,16 @@ class EnvironmentManager {
     if (env) {
       this.cleanupDesktopShortcuts(env)
       pluginInstallService.cleanupEnvironment(id, env.userDataDir)
+      
+      // 删除环境数据目录
+      if (env.userDataDir && existsSync(env.userDataDir)) {
+        try {
+          rmSync(env.userDataDir, { recursive: true, force: true })
+          console.log(`[deleteEnvironment] Deleted userDataDir: ${env.userDataDir}`)
+        } catch (error) {
+          console.error(`[deleteEnvironment] Failed to delete userDataDir: ${env.userDataDir}`, error)
+        }
+      }
     }
     storageService.deleteEnvironment(id)
     return true
@@ -403,8 +413,9 @@ class EnvironmentManager {
   }
 
   private generateUserDataDir(): string {
-    const baseDir = process.env.APPDATA || process.env.HOME || '.'
-    return `${baseDir}/fingerprint-browser/profiles/${Date.now()}`
+    const settings = storageService.getSettings()
+    const baseDir = settings.browserDataRoot || join(app.getPath('userData'), 'browser-data')
+    return join(baseDir, `${Date.now()}`)
   }
 
   private getAvailableCDPPort(): number {

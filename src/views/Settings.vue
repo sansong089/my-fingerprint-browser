@@ -30,6 +30,8 @@
                 <option value="windows">Windows</option>
                 <option value="linux">Linux</option>
                 <option value="macos">macOS</option>
+                <option value="ios">iOS</option>
+                <option value="android">Android</option>
               </select>
             </div>
             
@@ -86,7 +88,7 @@
       </div>
     </div>
     
-    <div class="pt-4 border-t border-gray-200 flex justify-end gap-2">
+    <div class="pt-4 border-t border-gray-200 flex justify-center gap-2">
       <button @click="$router.push('/')" class="btn btn-secondary">返回</button>
       <button @click="saveSettings" :disabled="saving" class="btn btn-primary">
         {{ saving ? '保存中...' : '保存并返回' }}

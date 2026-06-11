@@ -1,4 +1,6 @@
 import Store from 'electron-store'
+import { app } from 'electron'
+import { join } from 'path'
 import type { Group } from '../../../src/types/group'
 import type { ProxyGroup } from '../../../src/types/proxyGroup'
 import type { Proxy } from '../../../src/types/proxy'
@@ -7,7 +9,7 @@ import type { Script } from '../../../src/types/script'
 
 export interface FingerprintConfig {
   seed: number
-  platform: 'windows' | 'linux' | 'macos'
+  platform: 'windows' | 'linux' | 'macos' | 'ios' | 'android'
   platformVersion?: string
   brand?: 'Chrome' | 'Edge' | 'Opera' | 'Vivaldi'
   brandVersion?: string
@@ -50,11 +52,13 @@ export interface Environment {
 
 export interface Settings {
   browserPath: string
-  defaultPlatform: 'windows' | 'linux' | 'macos'
+  browserDataRoot: string
+  defaultPlatform: 'windows' | 'linux' | 'macos' | 'ios' | 'android'
   defaultTimezone: string
   defaultLang: string
   autoStart: boolean
   minimizeToTray: boolean
+  closeOnQuit: boolean
   syncDelay: number
   environmentPageSize: number
   proxyPageSize: number
@@ -86,7 +90,6 @@ export interface PluginRecord {
 export interface EnvironmentPluginTarget {
   envId: string
   pluginId: string
-  desiredState: 'installed' | 'removed'
   applyBackend?: 'launch-arg' | 'profile-external' | 'proven-other'
   lastAppliedVersion?: string
   lastMaterializedAt?: string
@@ -119,11 +122,13 @@ interface StoreSchema {
 
 const defaultSettings: Settings = {
   browserPath: '',
+  browserDataRoot: join(app.getPath('userData'), 'browser-data'),
   defaultPlatform: 'windows',
   defaultTimezone: 'Asia/Shanghai',
   defaultLang: 'zh-CN',
   autoStart: false,
   minimizeToTray: false,
+  closeOnQuit: true,
   syncDelay: 50,
   environmentPageSize: 10,
   proxyPageSize: 10,
@@ -147,7 +152,7 @@ class StorageService {
 
   constructor() {
     this.store = new Store<StoreSchema>({
-      name: 'fingerprint-browser-data',
+      name: 'MyFingerprintBrowser',
       defaults: {
         environments: [],
         settings: defaultSettings,
@@ -239,6 +244,10 @@ class StorageService {
       targets.push(target)
     }
     this.savePluginTargets(targets)
+  }
+
+  deletePluginTarget(envId: string, pluginId: string): void {
+    this.savePluginTargets(this.getPluginTargets().filter(target => !(target.envId === envId && target.pluginId === pluginId)))
   }
 
   deletePluginTargetsForPlugin(pluginId: string): void {
