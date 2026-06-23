@@ -1,12 +1,18 @@
 import { spawn, ChildProcess } from 'child_process'
 import { join, dirname } from 'path'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { app } from 'electron'
 import { storageService, Environment, FingerprintConfig } from './StorageService'
 import { eventBus } from '../managers/BrowserEventBus'
 import { syncExtensionService } from './SyncExtensionService'
 
 const WINDOWS_SAFE_COMMAND_LINE_LENGTH = 28000
+const CHINESE_FONT_FAMILIES = {
+  standard: 'Microsoft YaHei',
+  serif: 'SimSun',
+  sansserif: 'Microsoft YaHei',
+  fixed: 'Microsoft YaHei UI',
+} as const
 
 export interface LaunchOptions {
   userDataDir: string
@@ -183,8 +189,12 @@ class LaunchService {
       args.push(`--lang=${fp.lang}`)
       args.push(`--accept-lang=${fp.lang}`)
     }
-    if (fp.disabledSpoofing?.length) {
-      args.push(`--disable-spoofing=${fp.disabledSpoofing.join(',')}`)
+    const spoofing = new Set(fp.disabledSpoofing || [])
+    if (/^zh\b/i.test(fp.lang || '') || /^ja\b/i.test(fp.lang || '') || /^ko\b/i.test(fp.lang || '')) {
+      spoofing.add('font')
+    }
+    if (spoofing.size) {
+      args.push(`--disable-spoofing=${[...spoofing].join(',')}`)
     }
     
     // 代理
@@ -216,6 +226,58 @@ class LaunchService {
     }
 
     return args
+  }
+
+  private ensureChineseProfilePreferences(userDataDir: string, lang?: string): void {
+    if (!lang || !/^zh\b/i.test(lang)) {
+      return
+    }
+
+    try {
+      const defaultProfileDir = join(userDataDir, 'Default')
+      const preferencesPath = join(defaultProfileDir, 'Preferences')
+      mkdirSync(defaultProfileDir, { recursive: true })
+
+      let preferences: any = {}
+      if (existsSync(preferencesPath)) {
+        const raw = readFileSync(preferencesPath, 'utf8').trim()
+        if (raw) {
+          preferences = JSON.parse(raw)
+        }
+      }
+
+      preferences.intl = {
+        ...(preferences.intl || {}),
+        accept_languages: lang === 'zh-CN' ? 'zh-CN,zh,en-US,en' : `${lang},zh-CN,zh,en-US,en`,
+      }
+
+      const webprefs = {
+        ...(preferences.webkit?.webprefs || {}),
+      }
+      const fonts = {
+        ...(webprefs.fonts || {}),
+      }
+
+      for (const [fontType, family] of Object.entries(CHINESE_FONT_FAMILIES)) {
+        fonts[fontType] = {
+          ...(fonts[fontType] || {}),
+          Hans: family,
+          Hant: family,
+        }
+      }
+
+      preferences.webkit = {
+        ...(preferences.webkit || {}),
+        webprefs: {
+          ...webprefs,
+          fonts,
+        },
+      }
+
+      writeFileSync(preferencesPath, `${JSON.stringify(preferences, null, 2)}\n`, 'utf8')
+    } catch (error) {
+      console.error('[LaunchService] Failed to write Chinese profile preferences:', error)
+    }
   }
 
   private quoteCommandPart(part: string): string {
@@ -327,6 +389,7 @@ class LaunchService {
     }
 
     const launchMode = options.launchMode || 'standard'
+    this.ensureChineseProfilePreferences(options.userDataDir, options.fingerprint.lang)
     const launchSpec = this.createLaunchSpec({ ...options, syncExtensionDir, launchMode })
     if (!launchSpec) {
       return false
@@ -465,4 +528,3 @@ class LaunchService {
 
 export const launchService = new LaunchService()
 export default LaunchService
-
