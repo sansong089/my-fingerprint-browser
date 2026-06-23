@@ -7,12 +7,12 @@ import { eventBus } from '../managers/BrowserEventBus'
 import { syncExtensionService } from './SyncExtensionService'
 
 const WINDOWS_SAFE_COMMAND_LINE_LENGTH = 28000
-const CHINESE_FONT_FAMILIES = {
-  standard: 'Microsoft YaHei',
-  serif: 'SimSun',
-  sansserif: 'Microsoft YaHei',
-  fixed: 'Microsoft YaHei UI',
-} as const
+const CJK_FONT_FAMILIES: Record<string, Record<string, string>> = {
+  Hans: { standard: 'Microsoft YaHei', serif: 'SimSun', sansserif: 'Microsoft YaHei', fixed: 'Microsoft YaHei UI' },
+  Hant: { standard: 'Microsoft JhengHei', serif: 'PMingLiU', sansserif: 'Microsoft JhengHei', fixed: 'Microsoft JhengHei UI' },
+  Jpan: { standard: 'Yu Gothic', serif: 'Yu Mincho', sansserif: 'Yu Gothic', fixed: 'MS Gothic' },
+  Kore: { standard: 'Malgun Gothic', serif: 'Batang', sansserif: 'Malgun Gothic', fixed: 'Gulim' },
+}
 
 export interface LaunchOptions {
   userDataDir: string
@@ -189,12 +189,8 @@ class LaunchService {
       args.push(`--lang=${fp.lang}`)
       args.push(`--accept-lang=${fp.lang}`)
     }
-    const spoofing = new Set(fp.disabledSpoofing || [])
-    if (/^zh\b/i.test(fp.lang || '') || /^ja\b/i.test(fp.lang || '') || /^ko\b/i.test(fp.lang || '')) {
-      spoofing.add('font')
-    }
-    if (spoofing.size) {
-      args.push(`--disable-spoofing=${[...spoofing].join(',')}`)
+    if (fp.disabledSpoofing?.length) {
+      args.push(`--disable-spoofing=${fp.disabledSpoofing.join(',')}`)
     }
     
     // 代理
@@ -228,8 +224,8 @@ class LaunchService {
     return args
   }
 
-  private ensureChineseProfilePreferences(userDataDir: string, lang?: string): void {
-    if (!lang || !/^zh\b/i.test(lang)) {
+  private ensureCJKProfilePreferences(userDataDir: string, lang?: string): void {
+    if (!lang || !/^(zh|ja|ko)\b/i.test(lang)) {
       return
     }
 
@@ -246,9 +242,14 @@ class LaunchService {
         }
       }
 
+      const acceptLangs = ['zh-CN', 'zh', 'en-US', 'en']
+      if (/^ja\b/i.test(lang)) acceptLangs.unshift('ja')
+      if (/^ko\b/i.test(lang)) acceptLangs.unshift('ko')
+      if (!acceptLangs.includes(lang)) acceptLangs.unshift(lang)
+
       preferences.intl = {
         ...(preferences.intl || {}),
-        accept_languages: lang === 'zh-CN' ? 'zh-CN,zh,en-US,en' : `${lang},zh-CN,zh,en-US,en`,
+        accept_languages: acceptLangs.join(','),
       }
 
       const webprefs = {
@@ -258,11 +259,12 @@ class LaunchService {
         ...(webprefs.fonts || {}),
       }
 
-      for (const [fontType, family] of Object.entries(CHINESE_FONT_FAMILIES)) {
-        fonts[fontType] = {
-          ...(fonts[fontType] || {}),
-          Hans: family,
-          Hant: family,
+      for (const [script, families] of Object.entries(CJK_FONT_FAMILIES)) {
+        for (const [fontType, family] of Object.entries(families)) {
+          fonts[fontType] = {
+            ...(fonts[fontType] || {}),
+            [script]: family,
+          }
         }
       }
 
@@ -276,7 +278,7 @@ class LaunchService {
 
       writeFileSync(preferencesPath, `${JSON.stringify(preferences, null, 2)}\n`, 'utf8')
     } catch (error) {
-      console.error('[LaunchService] Failed to write Chinese profile preferences:', error)
+      console.error('[LaunchService] Failed to write CJK profile preferences:', error)
     }
   }
 
@@ -389,7 +391,7 @@ class LaunchService {
     }
 
     const launchMode = options.launchMode || 'standard'
-    this.ensureChineseProfilePreferences(options.userDataDir, options.fingerprint.lang)
+    this.ensureCJKProfilePreferences(options.userDataDir, options.fingerprint.lang)
     const launchSpec = this.createLaunchSpec({ ...options, syncExtensionDir, launchMode })
     if (!launchSpec) {
       return false
