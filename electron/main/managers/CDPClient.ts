@@ -2,19 +2,8 @@
  * CDP Client — Chrome DevTools Protocol 交互层
  *
  * 基于 chrome-remote-interface 封装，提供统一的 CDP 连接管理。
- * CookieManager / ScriptManager / SyncController 共用此模块。
+ * ScriptManager / SyncController 共用此模块。
  */
-// CookieData 类型内联定义（避免跨进程路径问题）
-export interface CookieData {
-  name: string
-  value: string
-  domain: string
-  path?: string
-  secure?: boolean
-  httpOnly?: boolean
-  sameSite?: 'Strict' | 'Lax' | 'None'
-  expires?: number
-}
 
 class CDPClient {
   private client: any = null
@@ -73,36 +62,6 @@ class CDPClient {
   }
 
   // ========== 便捷方法 ==========
-
-  /** 获取所有 Cookie */
-  async getAllCookies(): Promise<CookieData[]> {
-    const result = await this.send('Network.getAllCookies')
-    return (result.cookies || []).map((c: any) => ({
-      name: c.name,
-      value: c.value,
-      domain: c.domain,
-      path: c.path,
-      secure: c.secure,
-      httpOnly: c.httpOnly,
-      sameSite: c.sameSite,
-      expires: c.expires,
-    }))
-  }
-
-  /** 设置单个 Cookie */
-  async setCookie(cookie: CookieData): Promise<boolean> {
-    const result = await this.send('Network.setCookie', {
-      name: cookie.name,
-      value: cookie.value,
-      domain: cookie.domain,
-      path: cookie.path || '/',
-      secure: cookie.secure,
-      httpOnly: cookie.httpOnly,
-      sameSite: cookie.sameSite || 'Lax',
-      ...(cookie.expires ? { expires: cookie.expires } : {}),
-    })
-    return result.success ?? true
-  }
 
   /** 执行 JavaScript 表达式 */
   async evaluate(expression: string): Promise<any> {

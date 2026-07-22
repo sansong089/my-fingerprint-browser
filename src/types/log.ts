@@ -13,9 +13,6 @@ export interface ActivityLog {
     | 'delete'
     | 'import'
     | 'export'
-    | 'cookie_import'
-    | 'cookie_export'
-    | 'cookie_clear'
     | 'script_run'
   timestamp: string
   details?: string

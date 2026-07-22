@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, screen, Tray, Menu, nativeImage, type OpenDialogOptions, type Point, type Rectangle } from 'electron'
 import { join } from 'path'
-import { appendFileSync, mkdirSync } from 'fs'
+import { appendFileSync, mkdirSync, existsSync } from 'fs'
 
 // Services and Managers
 import { storageService } from './services/StorageService'
@@ -10,7 +10,6 @@ import { syncController } from './controllers/SyncController'
 import { eventBus } from './managers/BrowserEventBus'
 import { validate as validateIPC } from './managers/IPCValidator'
 import { activityLogService } from './managers/ActivityLogService'
-import { cookieManager } from './managers/CookieManager'
 import { scriptManager } from './managers/ScriptManager'
 import { windowManager } from './managers/WindowManager'
 import { syncExtensionService } from './services/SyncExtensionService'
@@ -695,22 +694,35 @@ async function handleQuitBrowserClose(): Promise<void> {
 /** 创建系统托盘 */
 function createTray() {
   runtimeLog('createTray:start')
-  
-  // 使用应用图标或创建简单图标
+
+  // 使用专用托盘图标或应用图标
+  const trayIconPath = join(__dirname, '../../public/tray-icon.png')
   const iconPath = join(__dirname, '../../public/icon.ico')
   let trayIcon: Electron.NativeImage
-  
+
   try {
-    trayIcon = nativeImage.createFromPath(iconPath)
-    if (trayIcon.isEmpty()) {
-      throw new Error('Icon is empty')
+    // 优先使用 16x16 托盘图标，更清晰
+    if (existsSync(trayIconPath)) {
+      trayIcon = nativeImage.createFromPath(trayIconPath)
+      if (trayIcon.isEmpty()) {
+        throw new Error('Tray icon is empty')
+      }
+      runtimeLog('createTray:using-tray-icon-png')
+    } else {
+      trayIcon = nativeImage.createFromPath(iconPath)
+      if (trayIcon.isEmpty()) {
+        throw new Error('Icon is empty')
+      }
+      // 缩放到托盘标准尺寸 16x16
+      trayIcon = trayIcon.resize({ width: 16, height: 16 })
+      runtimeLog('createTray:using-icon-ico-resized')
     }
   } catch {
     // 如果图标不存在，创建一个简单的图标
     trayIcon = nativeImage.createEmpty()
     runtimeLog('createTray:using-empty-icon')
   }
-  
+
   tray = new Tray(trayIcon)
   
   const contextMenu = Menu.buildFromTemplate([
@@ -762,6 +774,7 @@ function createWindow() {
     minHeight: 700,
     show: false,
     autoHideMenuBar: true,
+    icon: join(__dirname, '../../public/icon.ico'),
     webPreferences: {
       preload,
       nodeIntegration: false,
@@ -1373,115 +1386,6 @@ ipcMain.handle('run-script', async (_, params) => {
   if (env.status !== 'running') throw new Error('Environment is not running')
 
   return scriptManager.playScript(scriptId, envId, env.cdpPort)
-})
-
-// ==================== Cookie 管理（CookieManager + CDP）====================
-
-/** 获取环境 Cookie（支持运行时和文件模式） */
-ipcMain.handle('cookie-get', async (_, params) => {
-  const envId = params?.envId
-  if (!envId) throw new Error('Missing envId')
-
-  const env = storageService.getEnvironments().find(e => e.id === envId)
-  if (!env) throw new Error('Environment not found')
-
-  // 浏览器运行时：通过 CDP 获取
-  if (env.status === 'running' && env.cdpPort) {
-    return cookieManager.getAllCookies(env.cdpPort)
-  }
-
-  // 浏览器未运行时：从文件读取
-  return cookieFileService.readCookiesFromFile(env.userDataDir)
-})
-
-/** 设置 Cookie */
-ipcMain.handle('cookie-set', async (_, params) => {
-  const { envId, cookies } = params || {}
-  if (!envId) throw new Error('Missing envId')
-
-  const env = storageService.getEnvironments().find(e => e.id === envId)
-  if (!env?.cdpPort) throw new Error('Environment has no CDP port')
-  if (env.status !== 'running') throw new Error('Browser is not running')
-
-  if (Array.isArray(cookies)) {
-    return cookieManager.importCookies(env.cdpPort, cookies)
-  }
-  return cookieManager.setCookie(env.cdpPort, cookies)
-})
-
-/** 导入 Cookie（支持运行时和文件模式） */
-ipcMain.handle('cookie-import', async (_, params) => {
-  const { envId, cookies } = params || {}
-  if (!envId || !Array.isArray(cookies)) throw new Error('Invalid params')
-
-  const env = storageService.getEnvironments().find(e => e.id === envId)
-  if (!env) throw new Error('Environment not found')
-
-  // 浏览器运行时：通过 CDP 导入
-  if (env.status === 'running' && env.cdpPort) {
-    const result = await cookieManager.importCookies(env.cdpPort, cookies)
-    activityLogService.log({ envId, action: 'cookie_import', details: `CDP 导入 ${result.success} 个 Cookie` })
-    return result
-  }
-
-  // 浏览器未运行时：写入 SQLite 文件
-  const result = cookieFileService.writeCookiesToFile(env.userDataDir, cookies)
-  activityLogService.log({ envId, action: 'cookie_import', details: `文件导入 ${result.success} 个 Cookie` })
-  return result
-})
-
-/** 导出 Cookie（支持运行时和文件模式） */
-ipcMain.handle('cookie-export', async (_, params) => {
-  const { envId } = params || {}
-  if (!envId) throw new Error('Missing envId')
-
-  const env = storageService.getEnvironments().find(e => e.id === envId)
-  if (!env) throw new Error('Environment not found')
-
-  // 浏览器运行时：通过 CDP 导出
-  if (env.status === 'running' && env.cdpPort) {
-    const cookies = await cookieManager.exportCookies(env.cdpPort)
-    activityLogService.log({ envId, action: 'cookie_export', details: `CDP 导出 ${cookies.length} 个 Cookie` })
-    return cookies
-  }
-
-  // 浏览器未运行时：从文件读取
-  const cookies = cookieFileService.readCookiesFromFile(env.userDataDir)
-  activityLogService.log({ envId, action: 'cookie_export', details: `文件导出 ${cookies.length} 个 Cookie` })
-  return cookies
-})
-
-/** 删除单个 Cookie */
-ipcMain.handle('cookie-delete', async (_, params) => {
-  const { envId, name, domain } = params || {}
-  if (!envId || !name) throw new Error('Missing envId or cookie name')
-
-  const env = storageService.getEnvironments().find(e => e.id === envId)
-  if (!env?.cdpPort) throw new Error('Environment has no CDP port')
-  if (env.status !== 'running') throw new Error('Browser is not running')
-
-  return cookieManager.deleteCookie(env.cdpPort, name, domain || '')
-})
-
-/** 清空所有 Cookie */
-ipcMain.handle('cookie-clear', async (_, params) => {
-  const { envId } = params || {}
-  if (!envId) throw new Error('Missing envId')
-
-  const env = storageService.getEnvironments().find(e => e.id === envId)
-  if (!env?.cdpPort) throw new Error('Environment has no CDP port')
-  if (env.status !== 'running') throw new Error('Browser is not running')
-
-  const cookies = await cookieManager.getAllCookies(env.cdpPort)
-  let deleted = 0
-  for (const c of cookies) {
-    try {
-      await cookieManager.deleteCookie(env.cdpPort, c.name, c.domain || '')
-      deleted++
-    } catch { /* ignore individual errors */ }
-  }
-  activityLogService.log({ envId, action: 'cookie_clear', details: `清空 ${deleted} 个 Cookie` })
-  return { deleted }
 })
 
 // ==================== 窗口管理（WindowManager）====================

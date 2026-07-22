@@ -10,7 +10,6 @@ declare module 'lucide-vue-next' {
   const ChevronLeftIcon: DefineComponent<{}, {}, any>
   const ChevronRightIcon: DefineComponent<{}, {}, any>
   const CopyIcon: DefineComponent<{}, {}, any>
-  const CookieIcon: DefineComponent<{}, {}, any>
   const FolderInputIcon: DefineComponent<{}, {}, any>
   const Maximize2Icon: DefineComponent<{}, {}, any>
   const Minimize2Icon: DefineComponent<{}, {}, any>
@@ -36,7 +35,6 @@ declare module 'lucide-vue-next' {
     ChevronLeftIcon,
     ChevronRightIcon,
     CopyIcon,
-    CookieIcon,
     FolderInputIcon,
     Maximize2Icon,
     Minimize2Icon,

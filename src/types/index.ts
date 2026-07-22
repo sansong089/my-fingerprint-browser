@@ -17,7 +17,6 @@ export type { Settings } from './settings'
 export type { ProfileTemplate } from './template'
 export type { Script, ScriptStep } from './script'
 export type { ActivityLog } from './log'
-export type { CookieData } from './cookie'
 export type {
   PluginRecord,
   EnvironmentPluginTarget,
@@ -41,8 +40,6 @@ export type {
   ImportEnvironmentsParams,
   ExportEnvironmentsParams,
   ImportResult,
-  CookieGetParams,
-  CookieSetParams,
   SyncStartParams,
   ActivityLogQueryParams,
   WindowsArrangeParams,

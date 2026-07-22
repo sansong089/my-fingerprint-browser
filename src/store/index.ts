@@ -1,7 +1,7 @@
 import { createStore } from 'vuex'
 
 // Types — 统一从 @/types 导出（向后兼容，组件可直接从 store/index 导入类型）
-export type { Environment, FingerprintConfig, ProxyConfig, Settings, Group, ProxyGroup, Proxy, ProfileTemplate, Script, ScriptStep, ActivityLog, CookieData, WindowPosition, MonitorInfo, WindowInfo, PluginRecord, EnvironmentPluginTarget, PluginBackendProofRecord, PluginListItem, PluginInstallPayload } from '@/types'
+export type { Environment, FingerprintConfig, ProxyConfig, Settings, Group, ProxyGroup, Proxy, ProfileTemplate, Script, ScriptStep, ActivityLog, WindowPosition, MonitorInfo, WindowInfo, PluginRecord, EnvironmentPluginTarget, PluginBackendProofRecord, PluginListItem, PluginInstallPayload } from '@/types'
 
 // Vuex Modules
 import ui from './modules/ui'

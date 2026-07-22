@@ -185,10 +185,6 @@
                       class="ghost-btn ghost-btn--stop" aria-label="关闭" :data-label="'关闭'">
                       <PowerIcon class="row-action-icon" />
                     </button>
-                    <button @click.stop="openCookieManager(env)"
-                      class="ghost-btn" aria-label="Cookie管理" :data-label="'Cookie'">
-                      <CookieIcon class="row-action-icon" />
-                    </button>
                   </template>
                   <template v-else>
                     <SplitIconButton
@@ -350,15 +346,6 @@
       @import="startBrowserDataImport"
     />
 
-    <!-- CookieManager 弹窗 -->
-    <CookieManager
-      v-if="showCookieManager && cookieEnv"
-      :envId="cookieEnv.id"
-      :environmentName="cookieEnv.name"
-      :isRunning="cookieEnv.status === 'running'"
-      @close="showCookieManager = false; cookieEnv = null"
-    />
-
     <ConfirmDialog
       v-if="showDeleteConfirm"
       title="确认删除环境？"
@@ -380,7 +367,6 @@ import GroupSidebar from '@/components/layout/GroupSidebar.vue'
 import EnvironmentEditor from '@/components/EnvironmentEditor.vue'
 import ImportExportDialog from '@/components/ImportExportDialog.vue'
 import BrowserDataImportDialog from '@/components/BrowserDataImportDialog.vue'
-import CookieManager from '@/components/CookieManager.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import ListSurface from '@/components/common/ListSurface.vue'
 import PaginationBar from '@/components/common/PaginationBar.vue'
@@ -388,7 +374,6 @@ import SplitIconButton from '@/components/common/SplitIconButton.vue'
 import { toast } from '@/utils/toast'
 import {
   ChevronDownIcon,
-  CookieIcon,
   MinusIcon as MinimizeIcon,
   MonitorUpIcon,
   PencilIcon,
@@ -508,8 +493,6 @@ const importExportTargetCount = ref(0)
 const importExportProgress = ref<ImportExportProgress | null>(null)
 const showImportExport = ref(false)
 const showBrowserDataImport = ref(false)
-const showCookieManager = ref(false)
-const cookieEnv = ref<Environment | null>(null)
 const showDeleteConfirm = ref(false)
 const deletingEnv = ref<Environment | null>(null)
 const currentPage = ref(1)
@@ -908,16 +891,6 @@ async function prepareEnvironmentCreateDraft(env: EnvironmentCreateDraft): Promi
     console.warn('[prepareEnvironmentCreateDraft] generateFingerprint failed, using form values:', error)
     return draft
   }
-}
-
-function openCookieManager(env: Environment) {
-  closeInlineMenu()
-  if (env.status !== 'running') {
-    toast.warning('请先启动环境后再管理 Cookie')
-    return
-  }
-  cookieEnv.value = env
-  showCookieManager.value = true
 }
 
 function openImportExport() {

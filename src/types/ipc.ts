@@ -64,16 +64,6 @@ export interface ImportResult {
   plugins: { id: string; name: string; skipped: boolean }[]
 }
 
-// --- Cookie IPC ---
-export interface CookieGetParams {
-  envId: string
-}
-
-export interface CookieSetParams {
-  envId: string
-  cookies: import('./cookie').CookieData[]
-}
-
 // --- Sync IPC ---
 export interface SyncStartParams {
   envIds: string[]
